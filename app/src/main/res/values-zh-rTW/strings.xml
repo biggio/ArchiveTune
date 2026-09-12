@@ -493,6 +493,8 @@
     <string name="wakelock_desc">透過持有 CPU 喚醒鎖定，防止系統中斷歌曲播放</string>
     <string name="auto_start_on_bluetooth">藍牙連線時自動播放</string>
     <string name="auto_start_on_bluetooth_desc">藍牙音訊裝置連線時自動恢復播放</string>
+    <string name="auto_play_on_start">啟動時自動播放</string>
+    <string name="auto_play_on_start_desc">應用程式啟動時自動恢復或開始播放（第一首聲音淡入）</string>
     <string name="artist_separators">藝人分隔符號</string>
     <string name="external_downloader">外部下載器</string>
     <string name="external_downloader_desc">透過套件名稱使用外部應用程式下載歌曲</string>

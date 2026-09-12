@@ -228,8 +228,18 @@ class PlayerConnection(
             }
         }
 
-    fun playQueue(queue: Queue) {
-        service.playQueue(queue)
+    fun playQueue(
+        queue: Queue,
+        fadeIn: Boolean = false,
+    ) {
+        service.playQueue(queue, fadeIn = fadeIn)
+    }
+
+    fun startPlaybackExplicitly(
+        fadeIn: Boolean = false,
+        fadeInDurationMs: Long = MusicService.AUTO_PLAY_START_FADE_IN_DURATION_MS,
+    ) {
+        service.startPlaybackExplicitly(fadeIn = fadeIn, fadeInDurationMs = fadeInDurationMs)
     }
 
     fun startRadioSeamlessly() {

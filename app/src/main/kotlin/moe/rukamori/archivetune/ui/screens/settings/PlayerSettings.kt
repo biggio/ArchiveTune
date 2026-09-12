@@ -43,6 +43,7 @@ import moe.rukamori.archivetune.constants.AudioOffload
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.AudioQualityKey
 import moe.rukamori.archivetune.constants.AutoDownloadOnLikeKey
+import moe.rukamori.archivetune.constants.AutoPlayOnStartKey
 import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
 import moe.rukamori.archivetune.constants.AutoStartOnBluetoothKey
 import moe.rukamori.archivetune.constants.CrossfadeDurationKey
@@ -208,6 +209,11 @@ fun PlayerSettings(navController: NavController) {
         rememberPreference(
             AutoStartOnBluetoothKey,
             defaultValue = false,
+        )
+    val (autoPlayOnStart, onAutoPlayOnStartChange) =
+        rememberPreference(
+            AutoPlayOnStartKey,
+            defaultValue = true,
         )
     val (stopMusicOnTaskClear, onStopMusicOnTaskClearChange) =
         rememberPreference(
@@ -475,6 +481,16 @@ fun PlayerSettings(navController: NavController) {
                         icon = { Icon(painterResource(R.drawable.bluetooth), null) },
                         checked = autoStartOnBluetooth,
                         onCheckedChange = onAutoStartOnBluetoothChange,
+                    )
+                }
+
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.auto_play_on_start)) },
+                        description = stringResource(R.string.auto_play_on_start_desc),
+                        icon = { Icon(painterResource(R.drawable.play), null) },
+                        checked = autoPlayOnStart,
+                        onCheckedChange = onAutoPlayOnStartChange,
                     )
                 }
             }

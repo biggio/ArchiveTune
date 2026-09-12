@@ -220,6 +220,8 @@ import moe.rukamori.archivetune.constants.RemindAfterKey
 import moe.rukamori.archivetune.constants.SYSTEM_DEFAULT
 import moe.rukamori.archivetune.constants.SearchSource
 import moe.rukamori.archivetune.constants.SearchSourceKey
+import moe.rukamori.archivetune.constants.AutoPlayOnStartKey
+import moe.rukamori.archivetune.constants.SongSortType
 import moe.rukamori.archivetune.constants.StopMusicOnTaskClearKey
 import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.constants.UpdateChannelKey
@@ -1410,6 +1412,43 @@ class MainActivity : ComponentActivity() {
                         }
                         restoredMiniPlayerAnchor = true
                         miniPlayerAnchorPersistenceEnabled = true
+                    }
+
+                    val autoPlayOnStart by rememberPreference(AutoPlayOnStartKey, defaultValue = true)
+                    var autoPlayHandledOnLaunch by rememberSaveable { mutableStateOf(false) }
+
+                    LaunchedEffect(playerConnection, autoPlayOnStart) {
+                        if (autoPlayHandledOnLaunch || !autoPlayOnStart) return@LaunchedEffect
+                        val connection = playerConnection ?: return@LaunchedEffect
+                        connection.queueRestoreCompleted.first { it }
+                        delay(300)
+                        if (awaitRestorablePlayback(connection)) {
+                            val player = connection.player
+                            if (!player.isPlaying && !player.playWhenReady) {
+                                connection.startPlaybackExplicitly(fadeIn = true)
+                            }
+                            autoPlayHandledOnLaunch = true
+                        } else {
+                            val defaultSongs = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    database.quickPicks().first().ifEmpty {
+                                        database.likedSongs(SongSortType.PLAY_TIME, descending = true).first().ifEmpty {
+                                            database.songs(SongSortType.PLAY_TIME, descending = true).first()
+                                        }
+                                    }
+                                }.getOrNull().orEmpty()
+                            }
+                            if (defaultSongs.isNotEmpty() && connection.player.mediaItemCount == 0) {
+                                connection.playQueue(
+                                    ListQueue(
+                                        title = getString(R.string.quick_picks),
+                                        items = defaultSongs.map { it.toMediaItem() },
+                                    ),
+                                    fadeIn = true,
+                                )
+                            }
+                            autoPlayHandledOnLaunch = true
+                        }
                     }
 
                     val currentPlayerBottomSheetState = rememberUpdatedState(playerBottomSheetState)

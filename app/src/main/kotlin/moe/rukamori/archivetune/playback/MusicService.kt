@@ -136,6 +136,8 @@ import moe.rukamori.archivetune.constants.AutoDownloadOnLikeKey
 import moe.rukamori.archivetune.constants.AutoLoadMoreKey
 import moe.rukamori.archivetune.constants.AutoSkipNextOnErrorKey
 import moe.rukamori.archivetune.constants.AutoStartOnBluetoothKey
+import moe.rukamori.archivetune.constants.AutoPlayOnStartKey
+import moe.rukamori.archivetune.constants.SongSortType
 import moe.rukamori.archivetune.constants.CrossfadeDurationKey
 import moe.rukamori.archivetune.constants.CrossfadeEnabledKey
 import moe.rukamori.archivetune.constants.CrossfadeGaplessKey
@@ -330,6 +332,7 @@ class MusicService :
     private var lastDeviceMutePlaybackNoticeAtElapsedMs = 0L
     private var hasAudioFocus = false
     private var autoStartOnBluetoothEnabled = false
+    private var autoPlayOnStartEnabled = true
     private var bluetoothReceiverRegistered = false
     private var wakeLock: PowerManager.WakeLock? = null
     private var wakelockEnabled = false
@@ -498,6 +501,9 @@ class MusicService :
     var playerVolume = MutableStateFlow(1f)
     private val audioFocusVolumeFactor = MutableStateFlow(1f)
     private var effectiveVolumeRampJob: Job? = null
+    @Volatile
+    private var isFadingIn = false
+    private var fadeInJob: Job? = null
     private var crossfadeEnabled = false
     private var crossfadeDurationMs = 0L
     private var crossfadeGapless = false
@@ -1400,6 +1406,13 @@ class MusicService :
                 }
             }
 
+        dataStore.data
+            .map { it[AutoPlayOnStartKey] ?: true }
+            .distinctUntilChanged()
+            .collectLatest(scope) { enabled ->
+                autoPlayOnStartEnabled = enabled
+            }
+
         combine(
             dataStore.data.map { it[AudioOffload] ?: false },
             dataStore.data.map { it[CrossfadeEnabledKey] ?: false },
@@ -1598,8 +1611,33 @@ class MusicService :
                 cancelRestoredQueueHydration()
                 clearPersistedQueueFiles()
             }
+            val shouldAutoPlay = runCatching { dataStore.getAsync(AutoPlayOnStartKey, true) }.getOrDefault(true)
             withContext(Dispatchers.Main) {
                 queueRestoreCompleted.value = true
+                if (shouldAutoPlay && !isTogetherGuestSession()) {
+                    if (player.mediaItemCount > 0) {
+                        startPlaybackExplicitly(fadeIn = true)
+                    } else {
+                        scope.launch(Dispatchers.IO) {
+                            val defaultSongs = runCatching {
+                                database.quickPicks().first().ifEmpty {
+                                    database.likedSongs(SongSortType.PLAY_TIME, descending = true).first().ifEmpty {
+                                        database.songs(SongSortType.PLAY_TIME, descending = true).first()
+                                    }
+                                }
+                            }.getOrNull().orEmpty()
+
+                            if (defaultSongs.isNotEmpty()) {
+                                withContext(Dispatchers.Main) {
+                                    if (player.mediaItemCount == 0) {
+                                        player.setMediaItems(defaultSongs.map { it.toMediaItem() })
+                                        startPlaybackExplicitly(fadeIn = true)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -2513,7 +2551,7 @@ class MusicService :
     }
 
     private fun shouldRampEffectiveVolume(finalVolume: Float): Boolean {
-        if (isCrossfading || crossfadeHandoffInProgress) return false
+        if (isCrossfading || crossfadeHandoffInProgress || isFadingIn) return false
         if (!shouldKeepPlaybackAudible()) return false
         if (!finalVolume.isFinite()) return false
         if (player.volume <= STUCK_MUTED_VOLUME_EPSILON) return false
@@ -2528,6 +2566,7 @@ class MusicService :
 
     private fun applyEffectiveVolume(finalVolume: Float = currentEffectivePlayerVolume()) {
         crossfadeBaseVolume = finalVolume
+        if (isFadingIn) return
         val incomingPlayer = secondaryCrossfadePlayer
         if (crossfadeHandoffInProgress && incomingPlayer != null) {
             val handoffBaseVolume =
@@ -2559,7 +2598,7 @@ class MusicService :
 
     private fun ensureAudiblePlaybackVolume(reason: String) {
         if (!::player.isInitialized) return
-        if (isCrossfading || crossfadeHandoffInProgress) return
+        if (isCrossfading || crossfadeHandoffInProgress || isFadingIn) return
         if (!shouldKeepPlaybackAudible()) return
         if (playerVolume.value <= 0f) return
 
@@ -2574,6 +2613,67 @@ class MusicService :
             player.volume,
         )
         applyEffectiveVolumeImmediately(expectedVolume)
+    }
+
+    private fun cancelFadeIn(resetVolume: Boolean = true) {
+        fadeInJob?.cancel()
+        fadeInJob = null
+        if (isFadingIn) {
+            isFadingIn = false
+            if (resetVolume && ::player.isInitialized && player.playWhenReady) {
+                applyEffectiveVolumeImmediately()
+            }
+        }
+    }
+
+    fun startFadeIn(durationMs: Long = AUTO_PLAY_START_FADE_IN_DURATION_MS) {
+        cancelFadeIn(resetVolume = false)
+        isFadingIn = true
+        if (::player.isInitialized) {
+            player.volume = 0f
+        }
+        fadeInJob =
+            scope.launch {
+                try {
+                    val timeoutDeadline = android.os.SystemClock.elapsedRealtime() + 15_000L
+                    while (isActive && android.os.SystemClock.elapsedRealtime() < timeoutDeadline) {
+                        if (player.isPlaying || (player.playWhenReady && player.playbackState == Player.STATE_READY)) {
+                            break
+                        }
+                        if (::player.isInitialized) {
+                            player.volume = 0f
+                        }
+                        delay(50)
+                    }
+
+                    if (!isActive || !player.playWhenReady) return@launch
+
+                    val startedAtMs = android.os.SystemClock.elapsedRealtime()
+                    val initialMediaId = player.currentMediaItem?.mediaId
+
+                    while (isActive) {
+                        if (player.currentMediaItem?.mediaId != initialMediaId || !player.playWhenReady) {
+                            break
+                        }
+                        val targetVolume = currentEffectivePlayerVolume()
+                        val elapsedMs = android.os.SystemClock.elapsedRealtime() - startedAtMs
+                        val progress = (elapsedMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+                        val easedProgress = progress * progress * (3f - (2f * progress))
+                        val currentVol = (targetVolume * easedProgress).coerceIn(0f, maxSafeGainFactor)
+                        if (::player.isInitialized) {
+                            player.volume = currentVol
+                        }
+                        if (progress >= 1f) break
+                        delay(AUTO_PLAY_START_FADE_IN_FRAME_MS)
+                    }
+                } finally {
+                    isFadingIn = false
+                    if (::player.isInitialized && player.playWhenReady) {
+                        player.volume = currentEffectivePlayerVolume()
+                    }
+                    fadeInJob = null
+                }
+            }
     }
 
     private fun updateAudiblePlaybackRecovery() {
@@ -3549,6 +3649,34 @@ class MusicService :
             }
         }
 
+    fun startPlaybackExplicitly(
+        fadeIn: Boolean = false,
+        fadeInDurationMs: Long = AUTO_PLAY_START_FADE_IN_DURATION_MS,
+    ) {
+        if (isTogetherGuestSession()) return
+        cancelIdleStop()
+        promoteToStartedService()
+        ensureStartedAsForeground()
+        requestAudioFocus()
+        if (player.mediaItemCount > 0) {
+            if (player.playbackState == Player.STATE_ENDED) {
+                player.seekToDefaultPosition()
+            }
+            if (fadeIn) {
+                isFadingIn = true
+                if (::player.isInitialized) {
+                    player.volume = 0f
+                }
+            }
+            player.prepare()
+            player.playWhenReady = true
+            player.play()
+            if (fadeIn) {
+                startFadeIn(fadeInDurationMs)
+            }
+        }
+    }
+
     private fun handleBluetoothAutoStart() {
         if (isTogetherGuestSession()) return
 
@@ -3557,14 +3685,13 @@ class MusicService :
             player.playbackState != Player.STATE_ENDED
         ) {
             if (!player.playWhenReady) {
-                player.play()
+                startPlaybackExplicitly()
             }
             return
         }
 
         if (player.mediaItemCount > 0) {
-            player.prepare()
-            player.play()
+            startPlaybackExplicitly()
         }
     }
 
@@ -3927,6 +4054,7 @@ class MusicService :
     fun playQueue(
         queue: Queue,
         playWhenReady: Boolean = true,
+        fadeIn: Boolean = false,
     ) {
         val joined = togetherSessionState.value as? moe.rukamori.archivetune.together.TogetherSessionState.Joined
         if (!isTogetherApplyingRemote() && joined?.role is moe.rukamori.archivetune.together.TogetherRole.Guest) {
@@ -4000,6 +4128,12 @@ class MusicService :
             cancelIdleStop()
             promoteToStartedService()
             ensureStartedAsForeground()
+            if (fadeIn) {
+                isFadingIn = true
+                if (::player.isInitialized) {
+                    player.volume = 0f
+                }
+            }
         }
         cancelRestoredQueueHydration()
         ensureScopesActive()
@@ -4029,6 +4163,9 @@ class MusicService :
                 player.setMediaItem(preloadItem)
                 player.prepare()
                 player.playWhenReady = playWhenReady
+                if (playWhenReady && fadeIn) {
+                    startFadeIn()
+                }
             }
             var initialStatus =
                 withContext(Dispatchers.IO) {
@@ -4082,6 +4219,9 @@ class MusicService :
                 player.setMediaItems(items, index, initialStatus.position)
                 player.prepare()
                 player.playWhenReady = playWhenReady
+                if (playWhenReady && fadeIn) {
+                    startFadeIn()
+                }
                 if (player.shuffleModeEnabled) {
                     applyCurrentFirstShuffleOrder()
                 }
@@ -8299,6 +8439,7 @@ class MusicService :
         effectiveVolumeRampJob?.cancel()
         effectiveVolumeRampJob = null
         cancelCrossfade(resetVolume = false, resetPauseAtEnd = true)
+        cancelFadeIn(resetVolume = false)
         audioRouteRecoveryJob?.cancel()
         if (audioDeviceCallbackRegistered) {
             audioManager.unregisterAudioDeviceCallback(audioDeviceCallback)
@@ -8613,5 +8754,7 @@ class MusicService :
         const val MIN_AUDIBLE_EFFECTIVE_VOLUME = 0.01f
         const val STUCK_MUTED_VOLUME_EPSILON = 0.001f
         const val AUDIBLE_PLAYBACK_VOLUME_CHECK_MS = 2_000L
+        const val AUTO_PLAY_START_FADE_IN_DURATION_MS = 3_000L
+        const val AUTO_PLAY_START_FADE_IN_FRAME_MS = 25L
     }
 }

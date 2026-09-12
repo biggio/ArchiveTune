@@ -505,6 +505,8 @@
     <string name="pause_on_device_mute_desc">跟随静音状态自动暂停或恢复</string>
     <string name="auto_start_on_bluetooth">连接蓝牙时自动播放</string>
     <string name="auto_start_on_bluetooth_desc">连接蓝牙音频设备时自动恢复播放</string>
+    <string name="auto_play_on_start">启动时自动播放</string>
+    <string name="auto_play_on_start_desc">应用启动时自动恢复或开始播放（第一首声音淡入）</string>
     <string name="changelog">更新日志</string>
     <string name="view_changelog">查看更新日志</string>
     <string name="error_loading_changelog">错误加载更新日志</string>
