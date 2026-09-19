@@ -312,32 +312,63 @@ jobs:
           exit 1
 
       - name: Sign APK
-        uses: ilharp/sign-android-release@v2.0.0
-        with:
-          releaseDir: ${{ steps.release_dir.outputs.release_dir }}/
-          signingKey: ${{ secrets.KEYSTORE }}
-          keyAlias: ${{ secrets.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-          buildToolsVersion: 37.0.0
-
-      - name: Move and rename APK
         shell: bash
+        env:
+          KEYSTORE: ${{ secrets.KEYSTORE }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
           RELEASE_DIR="${{ steps.release_dir.outputs.release_dir }}"
           mkdir -p "$RELEASE_DIR/out"
-          mapfile -t SIGNED_APKS < <(
-            find "$RELEASE_DIR" -maxdepth 1 -type f \
-              \( -name "*-signed.apk" -o -name "*-unsigned-signed.apk" \)
-          )
-          if [ "${#SIGNED_APKS[@]}" -ne 1 ]; then
-            echo "Expected exactly one signed APK in $RELEASE_DIR, found ${#SIGNED_APKS[@]}"
+          TARGET_APK="$RELEASE_DIR/out/${{ steps.variant.outputs.apk_name }}"
+
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          echo "Using apksigner: $APKSIGNER"
+
+          CANDIDATE_APK="$(find "$RELEASE_DIR" -maxdepth 1 -type f -name "*.apk" ! -name "*-signed.apk" | head -n 1 || true)"
+          if [ -z "$CANDIDATE_APK" ] || [ ! -f "$CANDIDATE_APK" ]; then
+            echo "Could not find APK to sign in $RELEASE_DIR"
             find "$RELEASE_DIR" -maxdepth 2 -type f -print || true
             exit 1
           fi
-          APK="${SIGNED_APKS[0]}"
-          mv "$APK" "$RELEASE_DIR/out/${{ steps.variant.outputs.apk_name }}"
+
+          if [ -n "${KEYSTORE:-}" ] && [ -n "${KEY_ALIAS:-}" ]; then
+            echo "Signing with repository secret KEYSTORE..."
+            KEYSTORE_FILE="$(mktemp)"
+            echo "$KEYSTORE" | base64 -d > "$KEYSTORE_FILE"
+            "$APKSIGNER" sign \
+              --ks "$KEYSTORE_FILE" \
+              --ks-key-alias "$KEY_ALIAS" \
+              --ks-pass "pass:${KEYSTORE_PASSWORD:-}" \
+              --key-pass "pass:${KEY_PASSWORD:-${KEYSTORE_PASSWORD:-}}" \
+              --out "$TARGET_APK" \
+              "$CANDIDATE_APK"
+            rm -f "$KEYSTORE_FILE"
+          else
+            echo "No custom KEYSTORE secret configured. Signing with debug keystore fallback..."
+            mkdir -p ~/.android
+            if [ ! -f ~/.android/debug.keystore ]; then
+              keytool -genkey -v \
+                -keystore ~/.android/debug.keystore \
+                -storepass android \
+                -alias androiddebugkey \
+                -keypass android \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -dname "CN=Android Debug,O=Android,C=US"
+            fi
+            "$APKSIGNER" sign \
+              --ks ~/.android/debug.keystore \
+              --ks-key-alias androiddebugkey \
+              --ks-pass pass:android \
+              --key-pass pass:android \
+              --out "$TARGET_APK" \
+              "$CANDIDATE_APK"
+          fi
+          echo "Successfully created: $TARGET_APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
