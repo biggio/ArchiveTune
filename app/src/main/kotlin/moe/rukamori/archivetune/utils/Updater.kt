@@ -25,8 +25,11 @@ import moe.rukamori.archivetune.constants.GitHubReleasesEtagKey
 import moe.rukamori.archivetune.constants.GitHubReleasesFingerprintKey
 import moe.rukamori.archivetune.constants.GitHubReleasesJsonKey
 import moe.rukamori.archivetune.constants.GitHubReleasesLastCheckedAtKey
+import moe.rukamori.archivetune.constants.UpdateRepositoryOwnerKey
+import moe.rukamori.archivetune.constants.UpdateRepositoryNameKey
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 
 data class GitCommit(
     val sha: String,
@@ -56,27 +59,59 @@ object Updater {
     private val client = HttpClient()
     private const val ReleaseCacheCheckIntervalMs: Long = 6 * 60 * 60 * 1000L
 
-    private val githubOwner: String
-        get() = BuildConfig.GITHUB_OWNER
-    private val githubRepo: String
-        get() = BuildConfig.GITHUB_REPO
-    private val releaseOwner: String
-        get() = BuildConfig.RELEASE_GITHUB_OWNER
-    private val releaseRepo: String
-        get() = BuildConfig.RELEASE_GITHUB_REPO
+    private var currentEffectiveReleaseOwner: String = BuildConfig.RELEASE_GITHUB_OWNER
+    private var currentEffectiveReleaseRepo: String = BuildConfig.RELEASE_GITHUB_REPO
 
-    private const val CommitHistoryBaseUrl = "https://api.github.com/repos/rukamori/ArchiveTune"
+    suspend fun getReleaseOwner(): String {
+        val owner = App.instance.dataStore.getAsync(UpdateRepositoryOwnerKey)?.takeIf { it.isNotBlank() }
+            ?: BuildConfig.RELEASE_GITHUB_OWNER
+        currentEffectiveReleaseOwner = owner
+        return owner
+    }
+
+    suspend fun getReleaseRepo(): String {
+        val repo = App.instance.dataStore.getAsync(UpdateRepositoryNameKey)?.takeIf { it.isNotBlank() }
+            ?: BuildConfig.RELEASE_GITHUB_REPO
+        currentEffectiveReleaseRepo = repo
+        return repo
+    }
+
+    private val githubOwner: String
+        get() = currentEffectiveReleaseOwner
+    private val githubRepo: String
+        get() = currentEffectiveReleaseRepo
+    private val releaseOwner: String
+        get() = currentEffectiveReleaseOwner
+    private val releaseRepo: String
+        get() = currentEffectiveReleaseRepo
 
     private val stableReleaseBaseUrl: String
-        get() = "https://github.com/$releaseOwner/$releaseRepo/releases"
+        get() = "https://github.com/$currentEffectiveReleaseOwner/$currentEffectiveReleaseRepo/releases"
     private val artifactWorkflowRunsUrl: String
-        get() = "https://api.github.com/repos/$githubOwner/$githubRepo/actions/workflows/build.yml/runs" +
+        get() = "https://api.github.com/repos/$currentEffectiveReleaseOwner/$currentEffectiveReleaseRepo/actions/workflows/build.yml/runs" +
             "?branch=dev&status=success&per_page=1&exclude_pull_requests=true"
     var lastCheckTime = -1L
         private set
     private var latestReleaseTag: String? = null
     private var latestReleaseDownloadUrl: String? = null
     private var latestCanaryDownloadUrl: String? = null
+
+    suspend fun clearReleaseCache() {
+        App.instance.dataStore.edit { settings ->
+            settings.remove(GitHubReleasesJsonKey)
+            settings.remove(GitHubReleasesEtagKey)
+            settings.remove(GitHubReleasesLastCheckedAtKey)
+            settings.remove(GitHubReleasesFingerprintKey)
+            settings.remove(CanaryReleasesJsonKey)
+            settings.remove(CanaryReleasesEtagKey)
+            settings.remove(CanaryReleasesLastCheckedAtKey)
+            settings.remove(CanaryReleasesFingerprintKey)
+        }
+        lastCheckTime = -1L
+        latestReleaseTag = null
+        latestReleaseDownloadUrl = null
+        latestCanaryDownloadUrl = null
+    }
 
     private val isUpdaterDistribution: Boolean
         get() =
@@ -277,10 +312,25 @@ object Updater {
             val assets = item.optJSONArray("assets")
             val assetDownloadUrl =
                 assets?.let { releaseAssets ->
-                    (0 until releaseAssets.length())
-                        .asSequence()
-                        .mapNotNull(releaseAssets::optJSONObject)
-                        .firstOrNull { asset -> asset.optString("name") == expectedArtifactName }
+                    val assetList =
+                        (0 until releaseAssets.length())
+                            .asSequence()
+                            .mapNotNull(releaseAssets::optJSONObject)
+                            .filter { it.optString("name").endsWith(".apk", ignoreCase = true) }
+                            .toList()
+
+                    val exactMatch = assetList.firstOrNull { it.optString("name") == expectedArtifactName }
+                    val archMatch = assetList.firstOrNull {
+                        val name = it.optString("name").lowercase(Locale.ROOT)
+                        name.contains(BuildConfig.ARCHITECTURE.lowercase(Locale.ROOT)) &&
+                            (BuildConfig.DISTRIBUTION != "gms" || !name.contains("foss"))
+                    }
+                    val generalMatch = assetList.firstOrNull {
+                        val name = it.optString("name").lowercase(Locale.ROOT)
+                        if (BuildConfig.DISTRIBUTION == "gms") !name.contains("foss") else true
+                    } ?: assetList.firstOrNull()
+
+                    (exactMatch ?: archMatch ?: generalMatch)
                         ?.optString("browser_download_url")
                         ?.takeIf { it.isNotBlank() }
                 }
@@ -335,8 +385,10 @@ object Updater {
         perPage: Int,
         cachedEtag: String?,
     ): ReleasesNetworkResult {
+        val owner = getReleaseOwner()
+        val repo = getReleaseRepo()
         val response: HttpResponse =
-            client.get("https://api.github.com/repos/$releaseOwner/$releaseRepo/releases?per_page=$perPage") {
+            client.get("https://api.github.com/repos/$owner/$repo/releases?per_page=$perPage") {
                 headers {
                     append("Accept", "application/vnd.github+json")
                     append("User-Agent", "ArchiveTune")
@@ -399,16 +451,20 @@ object Updater {
 
     suspend fun getCommitHistory(
         count: Int = 20,
-        branch: String = "dev",
+        branch: String? = null,
     ): Result<List<GitCommit>> =
         runCatchingCancellable {
             if (!isUpdaterDistribution) {
                 return@runCatchingCancellable emptyList()
             }
 
+            val owner = getReleaseOwner()
+            val repo = getReleaseRepo()
+            val targetBranch = branch ?: if (owner == "rukamori") "dev" else "main"
+
             val response =
                 client
-                    .get("$CommitHistoryBaseUrl/commits?sha=$branch&per_page=$count")
+                    .get("https://api.github.com/repos/$owner/$repo/commits?sha=$targetBranch&per_page=$count")
                     .bodyAsText()
             val jsonArray = JSONArray(response)
             val commits = mutableListOf<GitCommit>()

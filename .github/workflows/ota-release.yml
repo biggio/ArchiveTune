@@ -1,0 +1,146 @@
+name: OTA Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag (e.g. v15.0.0, leave blank to use versionName from app/build.gradle.kts)'
+        required: false
+        default: ''
+      release_title:
+        description: 'Release Title (optional)'
+        required: false
+        default: ''
+      release_notes:
+        description: 'Release Notes (changelog)'
+        required: false
+        default: 'ArchiveTune OTA Update'
+      prerelease:
+        description: 'Mark as Pre-release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build and Publish OTA Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set Up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-cleanup: on-success
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Generate debug.keystore if not exists
+        run: |
+          mkdir -p ~/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            keytool -genkey -v \
+              -keystore ~/.android/debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Determine Version and Tag
+        id: version_info
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION_NAME=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts || echo "")
+            if [ -z "$VERSION_NAME" ]; then
+              VERSION_NAME="15.0.0"
+            fi
+            TAG="v$VERSION_NAME"
+          fi
+
+          TITLE="${{ github.event.inputs.release_title }}"
+          if [ -z "$TITLE" ]; then
+            TITLE="$TAG"
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "title=$TITLE" >> "$GITHUB_OUTPUT"
+          echo "Release tag: $TAG, Title: $TITLE"
+
+      - name: Build APKs
+        shell: bash
+        run: |
+          ./gradlew --console=plain assembleGmsMobileUniversalDebug assembleGmsMobileUniversalRelease -x lint --no-daemon
+
+      - name: Prepare and Sign APKs
+        shell: bash
+        run: |
+          mkdir -p dist
+          
+          # Copy debug universal APK
+          DEBUG_APK=$(find app/build/outputs/apk -type f -name "app-gms-mobile-universal-debug.apk" | head -n 1)
+          if [ -n "$DEBUG_APK" ] && [ -f "$DEBUG_APK" ]; then
+            cp "$DEBUG_APK" dist/app-gms-mobile-universal-debug.apk
+            echo "Copied debug APK: dist/app-gms-mobile-universal-debug.apk"
+          fi
+
+          # Find release APK
+          RELEASE_APK=$(find app/build/outputs/apk -type f -name "*release*.apk" | head -n 1)
+          if [ -n "$RELEASE_APK" ] && [ -f "$RELEASE_APK" ]; then
+            APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n 1)
+            echo "Using apksigner: $APKSIGNER"
+
+            if "$APKSIGNER" verify "$RELEASE_APK" >/dev/null 2>&1; then
+              echo "Release APK is already signed."
+              cp "$RELEASE_APK" dist/app-gms-mobile-universal-release.apk
+            else
+              echo "Signing release APK with debug keystore..."
+              "$APKSIGNER" sign \
+                --ks ~/.android/debug.keystore \
+                --ks-key-alias androiddebugkey \
+                --ks-pass pass:android \
+                --key-pass pass:android \
+                --out dist/app-gms-mobile-universal-release.apk \
+                "$RELEASE_APK"
+            fi
+            echo "Produced signed release APK: dist/app-gms-mobile-universal-release.apk"
+          fi
+
+          ls -lh dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version_info.outputs.tag }}
+          name: ${{ steps.version_info.outputs.title }}
+          body: ${{ github.event.inputs.release_notes || 'ArchiveTune OTA Update' }}
+          prerelease: ${{ github.event.inputs.prerelease || false }}
+          files: dist/*.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

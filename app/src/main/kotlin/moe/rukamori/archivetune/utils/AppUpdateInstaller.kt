@@ -203,6 +203,19 @@ object AppUpdateInstaller {
         context: Context,
         apkFile: File,
     ) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O &&
+            !context.packageManager.canRequestPackageInstalls()
+        ) {
+            try {
+                val settingsIntent =
+                    Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                        .setData(android.net.Uri.parse("package:${context.packageName}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(settingsIntent)
+            } catch (_: Exception) {
+            }
+        }
+
         val uri =
             FileProvider.getUriForFile(
                 context,

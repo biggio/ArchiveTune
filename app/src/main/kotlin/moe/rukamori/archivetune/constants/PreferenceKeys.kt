@@ -893,6 +893,8 @@ val EnableUpdateNotificationKey = booleanPreferencesKey("enableUpdateNotificatio
 val UpdateChannelKey = stringPreferencesKey("updateChannel")
 val LastUpdateCheckKey = longPreferencesKey("lastUpdateCheck")
 val LastNotifiedVersionKey = stringPreferencesKey("lastNotifiedVersion")
+val UpdateRepositoryOwnerKey = stringPreferencesKey("updateRepositoryOwner")
+val UpdateRepositoryNameKey = stringPreferencesKey("updateRepositoryName")
 
 val GitHubContributorsEtagKey = stringPreferencesKey("github_contributors_etag")
 val GitHubContributorsJsonKey = stringPreferencesKey("github_contributors_json")

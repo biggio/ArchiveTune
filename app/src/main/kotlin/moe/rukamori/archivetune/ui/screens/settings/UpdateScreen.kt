@@ -104,6 +104,9 @@ import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.channelTitle
+import androidx.compose.material3.OutlinedTextField
+import moe.rukamori.archivetune.constants.UpdateRepositoryOwnerKey
+import moe.rukamori.archivetune.constants.UpdateRepositoryNameKey
 import moe.rukamori.archivetune.constants.EnableUpdateNotificationKey
 import moe.rukamori.archivetune.constants.UpdateChannel
 import moe.rukamori.archivetune.constants.UpdateChannelKey
@@ -151,6 +154,19 @@ fun UpdateScreen(
             UpdateChannelKey,
             defaultValue = defaultUpdateChannel,
         )
+    val (updateRepoOwner, onUpdateRepoOwnerChange) =
+        rememberPreference(
+            UpdateRepositoryOwnerKey,
+            defaultValue = BuildConfig.RELEASE_GITHUB_OWNER,
+        )
+    val (updateRepoName, onUpdateRepoNameChange) =
+        rememberPreference(
+            UpdateRepositoryNameKey,
+            defaultValue = BuildConfig.RELEASE_GITHUB_REPO,
+        )
+    var showCustomRepoDialog by rememberSaveable { mutableStateOf(false) }
+    var customRepoInput by rememberSaveable { mutableStateOf("$updateRepoOwner/$updateRepoName") }
+
 
     var commits by remember { mutableStateOf<List<GitCommit>>(emptyList()) }
     var isLoadingCommits by remember { mutableStateOf(true) }
@@ -338,6 +354,15 @@ fun UpdateScreen(
         }
     }
 
+    val onUpdateSourceChange: (String, String) -> Unit = { newOwner, newRepo ->
+        onUpdateRepoOwnerChange(newOwner)
+        onUpdateRepoNameChange(newRepo)
+        coroutineScope.launch {
+            Updater.clearReleaseCache()
+            onCheckForUpdate()
+        }
+    }
+
     val permissionLauncher =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.RequestPermission(),
@@ -450,6 +475,46 @@ fun UpdateScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showArtifactChannelConfirmDialog = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (showCustomRepoDialog) {
+        AlertDialog(
+            onDismissRequest = { showCustomRepoDialog = false },
+            title = { Text(stringResource(R.string.update_source_custom_dialog_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = stringResource(R.string.update_source_custom_dialog_desc),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    OutlinedTextField(
+                        value = customRepoInput,
+                        onValueChange = { customRepoInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("owner/repo") },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showCustomRepoDialog = false
+                        val parts = customRepoInput.trim().split('/')
+                        if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
+                            onUpdateSourceChange(parts[0].trim(), parts[1].trim())
+                        }
+                    },
+                ) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomRepoDialog = false }) {
                     Text(stringResource(android.R.string.cancel))
                 }
             },
@@ -583,6 +648,14 @@ fun UpdateScreen(
                         if (updateChannel != UpdateChannel.ARTIFACT) {
                             showArtifactChannelConfirmDialog = true
                         }
+                    },
+                    updateRepoOwner = updateRepoOwner,
+                    updateRepoName = updateRepoName,
+                    onSelectFork = { onUpdateSourceChange("biggio", "ArchiveTune") },
+                    onSelectOfficial = { onUpdateSourceChange("rukamori", "ArchiveTune") },
+                    onOpenCustomDialog = {
+                        customRepoInput = "$updateRepoOwner/$updateRepoName"
+                        showCustomRepoDialog = true
                     },
                     modifier =
                         Modifier
@@ -812,6 +885,11 @@ private fun UpdateDashboard(
     onUpdateNotificationChange: (Boolean) -> Unit,
     onStableSelected: () -> Unit,
     onArtifactSelected: () -> Unit,
+    updateRepoOwner: String,
+    updateRepoName: String,
+    onSelectFork: () -> Unit,
+    onSelectOfficial: () -> Unit,
+    onOpenCustomDialog: () -> Unit,
 ) {
     if (useWideLayout) {
         Row(
@@ -834,6 +912,11 @@ private fun UpdateDashboard(
                 onUpdateNotificationChange = onUpdateNotificationChange,
                 onStableSelected = onStableSelected,
                 onArtifactSelected = onArtifactSelected,
+                updateRepoOwner = updateRepoOwner,
+                updateRepoName = updateRepoName,
+                onSelectFork = onSelectFork,
+                onSelectOfficial = onSelectOfficial,
+                onOpenCustomDialog = onOpenCustomDialog,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -856,6 +939,11 @@ private fun UpdateDashboard(
                 onUpdateNotificationChange = onUpdateNotificationChange,
                 onStableSelected = onStableSelected,
                 onArtifactSelected = onArtifactSelected,
+                updateRepoOwner = updateRepoOwner,
+                updateRepoName = updateRepoName,
+                onSelectFork = onSelectFork,
+                onSelectOfficial = onSelectOfficial,
+                onOpenCustomDialog = onOpenCustomDialog,
             )
         }
     }
@@ -1032,6 +1120,11 @@ private fun UpdatePreferencesPanel(
     onUpdateNotificationChange: (Boolean) -> Unit,
     onStableSelected: () -> Unit,
     onArtifactSelected: () -> Unit,
+    updateRepoOwner: String,
+    updateRepoName: String,
+    onSelectFork: () -> Unit,
+    onSelectOfficial: () -> Unit,
+    onOpenCustomDialog: () -> Unit,
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -1124,6 +1217,91 @@ private fun UpdatePreferencesPanel(
                         icon = {},
                     ) {
                         Text(text = stringResource(R.string.channel_artifact))
+                    }
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.extraLarge,
+            colors =
+                CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                ),
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FeatureIcon(
+                        iconRes = R.drawable.sync,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.update_source),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = "$updateRepoOwner/$updateRepoName",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    val isFork = updateRepoOwner.equals("biggio", ignoreCase = true) && updateRepoName.equals("ArchiveTune", ignoreCase = true)
+                    val isOfficial = updateRepoOwner.equals("rukamori", ignoreCase = true) && updateRepoName.equals("ArchiveTune", ignoreCase = true)
+                    val isCustom = !isFork && !isOfficial
+
+                    SegmentedButton(
+                        selected = isFork,
+                        onClick = onSelectFork,
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
+                        icon = {},
+                    ) {
+                        Text(
+                            text = stringResource(R.string.update_source_fork),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    SegmentedButton(
+                        selected = isOfficial,
+                        onClick = onSelectOfficial,
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
+                        icon = {},
+                    ) {
+                        Text(
+                            text = stringResource(R.string.update_source_official),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    SegmentedButton(
+                        selected = isCustom,
+                        onClick = onOpenCustomDialog,
+                        shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                        icon = {},
+                    ) {
+                        Text(
+                            text = stringResource(R.string.update_source_custom),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
             }

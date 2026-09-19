@@ -912,6 +912,15 @@
     <string name="updates_status_current">当前已是最新版本</string>
     <string name="enable_update_notification_channel_desc">当所选更新通道有新版本发布时接收通知</string>
     <string name="update_channel_desc">在经过测试的稳定版与开发快照版之间进行选择</string>
+    <string name="update_source">更新来源</string>
+    <string name="update_source_desc">选择用于 OTA 更新的 GitHub 仓库</string>
+    <string name="update_source_fork">个人分支 (biggio)</string>
+    <string name="update_source_official">官方主线 (rukamori)</string>
+    <string name="update_source_custom">自定义仓库</string>
+    <string name="update_source_custom_dialog_title">自定义更新仓库</string>
+    <string name="update_source_custom_dialog_desc">请输入 GitHub 拥有者与仓库名称（格式：owner/repo）</string>
+    <string name="install_permission_required">需要安装应用权限</string>
+    <string name="install_permission_desc">请在系统设置中开启“允许安装未知应用”，以完成 OTA 自动更新安装。</string>
     <string name="channel_artifact">Canary（金丝雀预览版）</string>
     <string name="updates_artifact_hosting_description">Canary 版本将基于最新的开发分支自动编译发布</string>
     <string name="updates_channel_warning_intro">ArchiveTune 提供两个构建版本的下载通道：</string>

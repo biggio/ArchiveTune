@@ -910,6 +910,15 @@
     <string name="enable_update_notification_channel_desc">Get notified when a new release is available on the selected channel</string>
     <string name="update_channel">Update Channel</string>
     <string name="update_channel_desc">Choose between tested releases and development snapshots.</string>
+    <string name="update_source">Update Source</string>
+    <string name="update_source_desc">Select the GitHub repository for OTA update releases</string>
+    <string name="update_source_fork">Fork (biggio)</string>
+    <string name="update_source_official">Official (rukamori)</string>
+    <string name="update_source_custom">Custom</string>
+    <string name="update_source_custom_dialog_title">Custom Update Repository</string>
+    <string name="update_source_custom_dialog_desc">Enter the GitHub owner and repository name (format: owner/repo)</string>
+    <string name="install_permission_required">Install permission required</string>
+    <string name="install_permission_desc">Please enable \"Install unknown apps\" permission to allow OTA update installation.</string>
     <string name="channel_artifact">Artifact</string>
     <string name="recent_commits">Recent Commits</string>
     <string name="updates_artifact_hosting_description">Artifact builds are fetched directly from GitHub Actions workflow runs.</string>

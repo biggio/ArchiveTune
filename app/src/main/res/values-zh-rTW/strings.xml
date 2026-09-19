@@ -752,6 +752,15 @@
     <string name="enable_update_notification">啟用更新通知</string>
     <string name="update_channel">更新頻道</string>
     <string name="update_channel_desc">在穩定版本和開發版本之間進行選擇。</string>
+    <string name="update_source">更新來源</string>
+    <string name="update_source_desc">選擇用於 OTA 更新的 GitHub 倉庫</string>
+    <string name="update_source_fork">個人分支 (biggio)</string>
+    <string name="update_source_official">官方主線 (rukamori)</string>
+    <string name="update_source_custom">自訂倉庫</string>
+    <string name="update_source_custom_dialog_title">自訂更新倉庫</string>
+    <string name="update_source_custom_dialog_desc">請輸入 GitHub 擁有者與倉庫名稱（格式：owner/repo）</string>
+    <string name="install_permission_required">需要安裝應用權限</string>
+    <string name="install_permission_desc">請在系統設定中開啟「允許安裝未知應用程式」，以完成 OTA 自動更新安裝。</string>
     <string name="recent_commits">近期提交</string>
     <string name="updates_channel_warning_intro">ArchiveTune 為建置版本提供了兩個下載管道：</string>
     <string name="updates_channel_warning_stable_title">穩定版本</string>
