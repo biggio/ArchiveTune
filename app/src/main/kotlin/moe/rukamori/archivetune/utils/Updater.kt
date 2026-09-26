@@ -155,7 +155,8 @@ object Updater {
         val major: Int,
         val minor: Int,
         val patch: Int,
-        val preRelease: List<PreReleaseIdentifier>,
+        val revision: Int = 0,
+        val preRelease: List<PreReleaseIdentifier> = emptyList(),
     ) : Comparable<SemVer> {
         override fun compareTo(other: SemVer): Int {
             val majorCompare = major.compareTo(other.major)
@@ -164,6 +165,8 @@ object Updater {
             if (minorCompare != 0) return minorCompare
             val patchCompare = patch.compareTo(other.patch)
             if (patchCompare != 0) return patchCompare
+            val revisionCompare = revision.compareTo(other.revision)
+            if (revisionCompare != 0) return revisionCompare
 
             val thisIsStable = preRelease.isEmpty()
             val otherIsStable = other.preRelease.isEmpty()
@@ -178,12 +181,14 @@ object Updater {
             return preRelease.size.compareTo(other.preRelease.size)
         }
 
-        fun normalizedName(): String =
-            if (preRelease.isEmpty()) {
-                "$major.$minor.$patch"
+        fun normalizedName(): String {
+            val base = if (revision > 0) "$major.$minor.$patch-r$revision" else "$major.$minor.$patch"
+            return if (preRelease.isEmpty()) {
+                base
             } else {
-                "$major.$minor.$patch-" + preRelease.joinToString(".") { it.raw }
+                base + "-" + preRelease.joinToString(".") { it.raw }
             }
+        }
     }
 
     private sealed interface PreReleaseIdentifier : Comparable<PreReleaseIdentifier> {
@@ -212,7 +217,7 @@ object Updater {
     }
 
     private val semVerRegex =
-        Regex("""(?i)\bv?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?\b""")
+        Regex("""(?i)\bv?(\d+)\.(\d+)\.(\d+)(?:(?:\.|\-r)(\d+))?(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?\b""")
     private val canaryTagRegex = Regex("""N\d{8}""")
 
     private fun parseSemVerOrNull(text: String): SemVer? {
@@ -220,7 +225,8 @@ object Updater {
         val major = match.groupValues.getOrNull(1)?.toIntOrNull() ?: return null
         val minor = match.groupValues.getOrNull(2)?.toIntOrNull() ?: return null
         val patch = match.groupValues.getOrNull(3)?.toIntOrNull() ?: return null
-        val preReleaseText = match.groupValues.getOrNull(4)?.takeIf { it.isNotBlank() }
+        val revision = match.groupValues.getOrNull(4)?.toIntOrNull() ?: 0
+        val preReleaseText = match.groupValues.getOrNull(5)?.takeIf { it.isNotBlank() }
         val preRelease =
             preReleaseText
                 ?.split('.')
@@ -237,6 +243,7 @@ object Updater {
             major = major,
             minor = minor,
             patch = patch,
+            revision = revision,
             preRelease = preRelease,
         )
     }
@@ -254,6 +261,7 @@ object Updater {
             aSemVer.major == bSemVer.major &&
                 aSemVer.minor == bSemVer.minor &&
                 aSemVer.patch == bSemVer.patch &&
+                aSemVer.revision == bSemVer.revision &&
                 aSemVer.preRelease == bSemVer.preRelease
         } else {
             a.trim() == b.trim()
