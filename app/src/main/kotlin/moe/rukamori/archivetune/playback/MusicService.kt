@@ -3673,8 +3673,7 @@ class MusicService :
     ) {
         if (isTogetherGuestSession()) return
         cancelIdleStop()
-        promoteToStartedService()
-        ensureStartedAsForeground()
+        ensureForegroundPlaybackService()
         requestAudioFocus()
         if (player.mediaItemCount > 0) {
             if (player.playbackState == Player.STATE_ENDED) {

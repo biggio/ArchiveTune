@@ -94,15 +94,10 @@ object Updater {
             settings.remove(GitHubReleasesEtagKey)
             settings.remove(GitHubReleasesLastCheckedAtKey)
             settings.remove(GitHubReleasesFingerprintKey)
-            settings.remove(CanaryReleasesJsonKey)
-            settings.remove(CanaryReleasesEtagKey)
-            settings.remove(CanaryReleasesLastCheckedAtKey)
-            settings.remove(CanaryReleasesFingerprintKey)
         }
         lastCheckTime = -1L
         latestReleaseTag = null
         latestReleaseDownloadUrl = null
-        latestCanaryDownloadUrl = null
     }
 
     private val isUpdaterDistribution: Boolean
