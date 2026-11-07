@@ -15,7 +15,7 @@ jobs:
       version_changed: ${{ steps.check_version.outputs.version_changed }}
       new_version: ${{ steps.check_version.outputs.new_version }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -57,16 +57,16 @@ jobs:
     outputs:
       commit_sha: ${{ steps.push_contributors.outputs.commit_sha }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.RELEASE_PAT }}
+          token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
           submodules: true
           fetch-depth: 0
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.15'
+          python-version: '3.11'
 
       - name: Generate translation contributor credits
         run: python scripts/generate_translation_contributors.py
@@ -84,13 +84,13 @@ jobs:
           echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v6
+        uses: actions/setup-java@v4
         with:
-          java-version: '27'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Set Up Gradle
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@v4
         with:
           cache-cleanup: on-success
 
@@ -203,28 +203,28 @@ jobs:
             abi: universal
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           ref: ${{ needs.reproducibility.outputs.commit_sha }}
           submodules: true
           fetch-depth: 0
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.15'
+          python-version: '3.11'
 
       - name: Generate translation contributor credits
         run: python scripts/generate_translation_contributors.py
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v6
+        uses: actions/setup-java@v4
         with:
-          java-version: '27'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Set Up Gradle
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@v4
         with:
           cache-cleanup: on-success
 
@@ -395,7 +395,7 @@ jobs:
           echo "Successfully created: $TARGET_APK"
 
       - name: Upload APK
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.variant.outputs.artifact_name }}
           path: ${{ steps.release_dir.outputs.release_dir }}/out/${{ steps.variant.outputs.apk_name }}
@@ -407,14 +407,14 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           ref: ${{ needs.reproducibility.outputs.commit_sha }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Download all APKs
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           path: downloaded_artifacts/
 
@@ -464,7 +464,7 @@ jobs:
 
       - name: Create Release
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
         run: |
           MOBILE_UNIVERSAL_APK=$(find downloaded_artifacts/app-gms-mobile-universal-release -name "*.apk" | head -n 1)
           OTHER_APKS=$(find downloaded_artifacts -path "*/app-*-release/*.apk" ! -path "*/app-gms-mobile-universal-release/*")

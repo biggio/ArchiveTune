@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Notify referenced issues
-        uses: actions/github-script@v9
+        uses: actions/github-script@v7
         env:
           ISSUE_LABEL: CONFIRMED
           ISSUE_LABEL_COLOR: 8DF148
