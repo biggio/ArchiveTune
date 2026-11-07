@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import moe.rukamori.archivetune.appicon.RestoreLauncherEntryUseCase
 import moe.rukamori.archivetune.canvas.StartCanvasPolicyUseCase
 import moe.rukamori.archivetune.constants.*
 import moe.rukamori.archivetune.downloads.DownloadedArtworkRepository
@@ -92,6 +93,9 @@ class App :
     @Inject
     lateinit var startCanvasPolicy: StartCanvasPolicyUseCase
 
+    @Inject
+    lateinit var restoreLauncherEntry: RestoreLauncherEntryUseCase
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     @Volatile private var isInitialized = false
@@ -132,6 +136,21 @@ class App :
         initializeGatekeeper()
         initializeCriticalSync()
         initializeDeferredAsync()
+        initializeLauncherEntry()
+    }
+
+    private fun initializeLauncherEntry() {
+        if (BuildConfig.DEVICE == "automotive") return
+        applicationScope.launch(Dispatchers.IO) {
+            try {
+                restoreLauncherEntry()
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                Timber.e(error, "Unable to restore launcher entry")
+                reportException(error)
+            }
+        }
     }
 
     private fun initializeGatekeeper() {
@@ -304,33 +323,35 @@ class App :
                 }
         }
 
-        try {
-            Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-                try {
-                    val sw = StringWriter()
-                    val pw = PrintWriter(sw)
-                    throwable.printStackTrace(pw)
-                    val stack = sw.toString()
-
-                    val intent =
-                        Intent(this@App, DebugActivity::class.java).apply {
-                            putExtra(DebugActivity.EXTRA_STACK_TRACE, stack)
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                        }
-                    startActivity(intent)
+        if (BuildConfig.DEVICE != "automotive") {
+            try {
+                Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
                     try {
-                        Thread.sleep(100)
-                    } catch (_: InterruptedException) {
+                        val sw = StringWriter()
+                        val pw = PrintWriter(sw)
+                        throwable.printStackTrace(pw)
+                        val stack = sw.toString()
+
+                        val intent =
+                            Intent(this@App, DebugActivity::class.java).apply {
+                                putExtra(DebugActivity.EXTRA_STACK_TRACE, stack)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                            }
+                        startActivity(intent)
+                        try {
+                            Thread.sleep(100)
+                        } catch (_: InterruptedException) {
+                        }
+                    } catch (e: Exception) {
+                        reportException(e)
+                    } finally {
+                        android.os.Process.killProcess(android.os.Process.myPid())
+                        exitProcess(2)
                     }
-                } catch (e: Exception) {
-                    reportException(e)
-                } finally {
-                    android.os.Process.killProcess(android.os.Process.myPid())
-                    exitProcess(2)
                 }
+            } catch (e: Exception) {
+                reportException(e)
             }
-        } catch (e: Exception) {
-            reportException(e)
         }
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data

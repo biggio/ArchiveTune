@@ -14,7 +14,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -307,7 +306,7 @@ class AboutViewModel
             contributorsState = AboutContributorsUiState.Loading
             updateState()
             contributorsJob =
-                viewModelScope.launch(Dispatchers.IO) {
+                viewModelScope.launch {
                     contributorsState =
                         try {
                             fetchAboutContributors()
@@ -336,13 +335,15 @@ class AboutViewModel
         }
 
         private fun loadTranslationContributors(force: Boolean = false) {
-            if (!force && translationContributorsJob?.isActive == true) return
-            if (!force && translationContributorsState is AboutTranslationContributorsUiState.Success) return
-            translationContributorsJob?.cancel()
+            if (translationContributorsJob?.isActive == true) return
+            if (!force &&
+                (translationContributorsState is AboutTranslationContributorsUiState.Success ||
+                    translationContributorsState is AboutTranslationContributorsUiState.Empty)
+            ) return
             translationContributorsState = AboutTranslationContributorsUiState.Loading
             updateState()
             translationContributorsJob =
-                viewModelScope.launch(Dispatchers.IO) {
+                viewModelScope.launch {
                     translationContributorsState =
                         try {
                             fetchTranslationContributors()
@@ -356,12 +357,12 @@ class AboutViewModel
                                         }
                                     },
                                     onFailure = {
-                                        AboutTranslationContributorsUiState.Error(R.string.error_unknown)
+                                        AboutTranslationContributorsUiState.Error(R.string.about_translation_contributors_error)
                                     },
                                 )
                         } catch (throwable: Throwable) {
                             if (throwable is CancellationException) throw throwable
-                            AboutTranslationContributorsUiState.Error(R.string.error_unknown)
+                            AboutTranslationContributorsUiState.Error(R.string.about_translation_contributors_error)
                         }
                     updateState()
                 }
@@ -374,7 +375,7 @@ class AboutViewModel
             dependencyLicensesState = AboutDependencyLicensesUiState.Loading
             updateState()
             dependencyLicensesJob =
-                viewModelScope.launch(Dispatchers.IO) {
+                viewModelScope.launch {
                     dependencyLicensesState =
                         try {
                             fetchDependencyLicenses()
@@ -421,7 +422,7 @@ class AboutViewModel
                             id = "website",
                             iconResId = R.drawable.website,
                             labelResId = R.string.about_content_desc_website,
-                            url = "https://archivetune.koiiverse.cloud",
+                            url = "https://archivetune.miuka.moe",
                         ),
                         AboutLinkUiModel(
                             id = "telegram",
@@ -433,25 +434,25 @@ class AboutViewModel
                             id = "donate",
                             iconResId = R.drawable.coffee,
                             labelResId = R.string.about_content_desc_donate,
-                            url = "https://koiiverse.cloud/donate",
+                            url = "https://miuka.moe/donate",
                         ),
                         AboutLinkUiModel(
                             id = "discord",
                             iconResId = R.drawable.discord,
                             labelResId = R.string.discord,
-                            url = "https://discord.gg/XF2fpb9rTq",
+                            url = "https://discord.gg/archivetune",
                         ),
                         AboutLinkUiModel(
                             id = "privacy_policy",
                             iconResId = R.drawable.lock,
                             labelResId = R.string.privacy,
-                            url = "https://archivetune.koiiverse.cloud/privacy",
+                            url = "https://archivetune.miuka.moe/privacy",
                         ),
                     ),
                 leadDeveloper =
                     TeamMember(
                         avatarUrl = "https://avatars.githubusercontent.com/u/107134739?v=4",
-                        name = "morie",
+                        name = "morieattonkatsu",
                         positionResId = R.string.about_position_lead_dev,
                         profileUrl = "https://github.com/rukamori",
                         links =
@@ -466,7 +467,7 @@ class AboutViewModel
                                     id = "website",
                                     iconResId = R.drawable.website,
                                     labelResId = R.string.about_content_desc_website,
-                                    url = "https://koiiverse.cloud",
+                                    url = "https://miuka.moe",
                                 ),
                                 AboutLinkUiModel(
                                     id = "discord",

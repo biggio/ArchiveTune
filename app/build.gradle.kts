@@ -60,13 +60,15 @@ val hasReleaseSigningConfig =
 android {
     namespace = "moe.rukamori.archivetune"
     compileSdk = 37
+    ndkVersion = "30.0.16248370"
+    compileSdkMinor = 2
 
     defaultConfig {
     applicationId = "moe.rukamori.archivetune"
         minSdk = 26
         targetSdk = 37
-        versionCode = 14101
-        versionName = "15.0.0-r1"
+        versionCode = 14201
+        versionName = "15.1.0-r1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -119,7 +121,6 @@ android {
                 ?: "ArchiveTune"
         buildConfigField("String", "GITHUB_OWNER", githubOwner.asBuildConfigString())
         buildConfigField("String", "GITHUB_REPO", githubRepo.asBuildConfigString())
-        buildConfigField("boolean", "IS_NIGHTLY_BUILD", "false")
 
         val releaseGithubOwner =
             System.getenv("RELEASE_GITHUB_OWNER")?.trim()
@@ -161,6 +162,11 @@ android {
         create("tv") {
             dimension = "device"
             buildConfigField("String", "DEVICE", "\"tv\"")
+        }
+        create("automotive") {
+            dimension = "device"
+            minSdk = 28
+            buildConfigField("String", "DEVICE", "\"automotive\"")
         }
         create("universal") {
             dimension = "abi"
@@ -229,19 +235,7 @@ android {
                 "proguard-rules.pro"
             )
             buildConfigField("boolean", "LEAK_CANARY_TOGGLE_AVAILABLE", "true")
-            buildConfigField("boolean", "IS_NIGHTLY_BUILD", "true")
             matchingFallbacks += listOf("release")
-
-            val nightlyReleaseOwner =
-                System.getenv("NIGHTLY_RELEASE_GITHUB_OWNER")?.trim()
-                    ?: localProperties.getProperty("NIGHTLY_RELEASE_GITHUB_OWNER")?.trim()
-                    ?: "rukamori"
-            val nightlyReleaseRepo =
-                System.getenv("NIGHTLY_RELEASE_GITHUB_REPO")?.trim()
-                    ?: localProperties.getProperty("NIGHTLY_RELEASE_GITHUB_REPO")?.trim()
-                    ?: "canary"
-            buildConfigField("String", "RELEASE_GITHUB_OWNER", nightlyReleaseOwner.asBuildConfigString())
-            buildConfigField("String", "RELEASE_GITHUB_REPO", nightlyReleaseRepo.asBuildConfigString())
         }
     }
 
@@ -329,6 +323,9 @@ dependencies {
     implementation(libs.lifecycle.runtime.compose)
 
     implementation(libs.material3)
+    implementation(libs.haze)
+    implementation(libs.haze.blur)
+    implementation(libs.haze.glass)
     implementation(libs.androidx.graphics.shapes)
     implementation(libs.palette)
     implementation(libs.androidsvg)
@@ -349,20 +346,20 @@ dependencies {
     implementation(libs.shimmer)
 
     // Glance Widget support
-    implementation("androidx.glance:glance:1.1.1")
-    implementation("androidx.glance:glance-appwidget:1.1.1")
-    implementation("androidx.glance:glance-material3:1.1.1")
+    implementation("androidx.glance:glance:1.2.0")
+    implementation("androidx.glance:glance-appwidget:1.2.0")
+    implementation("androidx.glance:glance-material3:1.2.0")
 
     implementation(libs.media3)
     implementation("androidx.media3:media3-exoplayer-hls:${libs.versions.media3.get()}")
     implementation(libs.media3.session)
+    implementation(libs.car.app)
     implementation(libs.media3.okhttp)
     implementation("androidx.media3:media3-ui:${libs.versions.media3.get()}")
     implementation("androidx.media3:media3-ui-compose:${libs.versions.media3.get()}")
     add("gmsImplementation", libs.media3.cast)
     add("gmsImplementation", libs.mediarouter)
     add("gmsImplementation", "com.google.android.gms:play-services-auth:22.0.0")
-    implementation(libs.squigglyslider)
 
 
     implementation(libs.room.runtime)
@@ -391,7 +388,9 @@ dependencies {
     implementation(project(":shazamkit"))
     implementation(project(":spotifycore"))
     implementation(project(":morideobfuscator"))
-    implementation("com.materialkolor:material-kolor:5.0.0-alpha07")
+    implementation(project(":modules"))
+    implementation("androidx.media3:media3-exoplayer-dash:${libs.versions.media3.get()}")
+    implementation("com.materialkolor:material-kolor:5.0.1")
 
     implementation(libs.webkit)
     implementation(libs.ktor.client.core)
@@ -410,13 +409,14 @@ dependencies {
     testImplementation(libs.turbine)
     implementation(libs.translator)
     implementation("androidx.lifecycle:lifecycle-process:2.11.0")
-    implementation("androidx.compose.material3.adaptive:adaptive:1.3.0-rc01")
+    implementation("androidx.compose.material3.adaptive:adaptive:1.4.0-alpha03")
     implementation(libs.accompanist.lyrics.ui)
     implementation(libs.accompanist.lyrics.core)
 }
 
 androidComponents {
     onVariants(selector().all()) { variant ->
+        if (variant.productFlavors.any { (_, flavor) -> flavor == "automotive" }) return@onVariants
         val capitalizedVariantName =
             variant.name.replaceFirstChar { character ->
                 if (character.isLowerCase()) character.titlecase() else character.toString()
@@ -469,13 +469,18 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
 }
 
 configurations.configureEach {
+    resolutionStrategy.eachDependency {
+        when (requested.group) {
+            "androidx.compose.runtime",
+            "androidx.compose.foundation",
+            "androidx.compose.ui",
+            "androidx.compose.animation" -> {
+                useVersion(libs.versions.compose.get())
+                because("Keep Compose aligned with the RectList alignment-placement fix")
+            }
+        }
+    }
     resolutionStrategy.force(
-        "androidx.compose.runtime:runtime:${libs.versions.compose.get()}",
-        "androidx.compose.foundation:foundation:${libs.versions.compose.get()}",
-        "androidx.compose.ui:ui:${libs.versions.compose.get()}",
-        "androidx.compose.ui:ui-util:${libs.versions.compose.get()}",
-        "androidx.compose.ui:ui-tooling:${libs.versions.compose.get()}",
-        "androidx.compose.animation:animation-graphics:${libs.versions.compose.get()}",
         "org.jetbrains.kotlin:kotlin-metadata-jvm:${libs.versions.kotlinMetadata.get()}",
     )
 }

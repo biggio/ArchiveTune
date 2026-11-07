@@ -91,8 +91,11 @@ import moe.rukamori.archivetune.spotify.SpotifyLibraryViewModel
 import moe.rukamori.archivetune.spotify.SpotifyMapper
 import moe.rukamori.archivetune.spotify.models.SpotifyPlaylist
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
+import moe.rukamori.archivetune.ui.utils.navigateToAlbum
+import moe.rukamori.archivetune.ui.utils.navigateToArtist
 import moe.rukamori.archivetune.utils.rememberPreference
 import moe.rukamori.archivetune.viewmodels.LibraryMixViewModel
+import moe.rukamori.archivetune.viewmodels.LibraryRefreshState
 import moe.rukamori.archivetune.viewmodels.LibraryTopMixEmptyReason
 import moe.rukamori.archivetune.viewmodels.LibraryTopMixUiModel
 import moe.rukamori.archivetune.viewmodels.LibraryTopMixesUiState
@@ -131,7 +134,9 @@ fun LibraryMixScreen(
     val albums by viewModel.albums.collectAsStateWithLifecycle()
     val artists by viewModel.artists.collectAsStateWithLifecycle()
     val playlists by viewModel.playlists.collectAsStateWithLifecycle()
-    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val refreshState by viewModel.refreshState.collectAsStateWithLifecycle()
+    val refreshLibrary = remember(viewModel) { { viewModel.syncAllLibrary() } }
+    val onRefreshErrorShown = remember(viewModel) { { viewModel.onRefreshErrorShown() } }
     val mostPlayedAlbumUiState by viewModel.mostPlayedAlbumUiState.collectAsStateWithLifecycle()
     val topMixesUiState by viewModel.topMixesUiState.collectAsStateWithLifecycle()
     val spotifyPlaylists by spotifyLibraryViewModel.playlists.collectAsStateWithLifecycle()
@@ -165,6 +170,11 @@ fun LibraryMixScreen(
             snackbarHostState.showSnackbar(message)
         }
     }
+    LibraryRefreshFeedbackEffect(
+        state = refreshState,
+        snackbarHostState = snackbarHostState,
+        onErrorShown = onRefreshErrorShown,
+    )
 
     val playerAwareBottomPadding =
         LocalPlayerAwareWindowInsets.current
@@ -174,8 +184,8 @@ fun LibraryMixScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         ExpressivePullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = { viewModel.syncAllLibrary() },
+            isRefreshing = refreshState is LibraryRefreshState.Loading,
+            onRefresh = refreshLibrary,
             modifier = Modifier.fillMaxSize(),
             indicatorOffset = LibraryPullToRefreshIndicatorOffset,
         ) {
@@ -212,7 +222,7 @@ fun LibraryMixScreen(
 
                         MostPlayedAlbumSpotlightCard(
                             album = album,
-                            onOpenAlbum = { navController.navigate("album/${album.id}") },
+                            onOpenAlbum = { navController.navigateToAlbum(album.id) },
                             onPlayAll = playAlbum,
                             onShuffle = shuffleAlbum,
                         )
@@ -655,7 +665,7 @@ fun LibraryMixScreen(
                                             Modifier
                                                 .width(80.dp)
                                                 .clickable {
-                                                    navController.navigate("artist/${artist.id}")
+                                                    navController.navigateToArtist(artist.id)
                                                 },
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                     ) {
@@ -789,7 +799,7 @@ private fun SpotifyPlaylistCompactCard(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    painter = painterResource(id = R.drawable.spotify_icon),
+                    painter = painterResource(id = R.drawable.spotify),
                     contentDescription = stringResource(R.string.spotify_account),
                     tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(14.dp),

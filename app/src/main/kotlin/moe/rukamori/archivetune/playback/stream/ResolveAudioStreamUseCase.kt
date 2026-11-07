@@ -22,11 +22,8 @@ import kotlinx.coroutines.guava.future
 import moe.rukamori.archivetune.utils.YTPlayerUtils
 import timber.log.Timber
 import java.io.InterruptedIOException
-import java.net.SocketTimeoutException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutionException
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.coroutineContext
@@ -36,6 +33,7 @@ class ResolveAudioStreamUseCase
     @Inject
     constructor(
         private val youtubeiRepository: YoutubeiStreamRepository,
+        private val moduleAudio: moe.rukamori.archivetune.modules.ResolveModuleAudioUseCase,
     ) {
         private data class CacheKey(
             val mediaId: String,
@@ -88,6 +86,9 @@ class ResolveAudioStreamUseCase
             request: AudioStreamRequest,
             consumer: ResolutionConsumer,
         ): ResolvedAudioStream {
+            if (request.allowModules && request.pinnedFormatId == null) {
+                moduleAudio.resolve(request.mediaId, request.moduleMetadata)?.let { return it.toResolvedAudioStream() }
+            }
             val key = request.cacheKey()
             val priority = request.resolutionPriority(consumer)
             val lease = acquireResolution(key, request, consumer, priority)
@@ -242,30 +243,17 @@ class ResolveAudioStreamUseCase
         @WorkerThread
         fun resolveBlocking(request: AudioStreamRequest): ResolvedAudioStream {
             check(Looper.myLooper() != Looper.getMainLooper())
-            val timeoutSeconds =
-                if (request.purpose == StreamPurpose.DOWNLOAD) {
-                    DOWNLOAD_RESOLUTION_TIMEOUT_SECONDS
-                } else {
-                    PLAYBACK_RESOLUTION_TIMEOUT_SECONDS
-                }
             val startedAt = SystemClock.elapsedRealtime()
             Timber.tag(TAG).d(
-                "Resolving mediaId=%s purpose=%s watchdogSeconds=%d",
+                "Resolving mediaId=%s purpose=%s",
                 request.mediaId,
                 request.purpose,
-                timeoutSeconds,
             )
             val future = scope.future { invoke(request) }
             return try {
-                future.get(timeoutSeconds, TimeUnit.SECONDS).also {
+                future.get().also {
                     Timber.tag(TAG).d("Resolution delivered elapsedMs=%d", SystemClock.elapsedRealtime() - startedAt)
                 }
-            } catch (throwable: TimeoutException) {
-                future.cancel(true)
-                Timber.tag(TAG).w("Resolution watchdog expired elapsedMs=%d", SystemClock.elapsedRealtime() - startedAt)
-                throw SocketTimeoutException(
-                    "Audio stream resolution timed out after $timeoutSeconds seconds",
-                ).apply { initCause(throwable) }
             } catch (throwable: InterruptedException) {
                 future.cancel(true)
                 Thread.currentThread().interrupt()
@@ -275,20 +263,17 @@ class ResolveAudioStreamUseCase
             } catch (throwable: ExecutionException) {
                 future.cancel(true)
                 val cause = throwable.cause ?: throwable
-                if (cause is CancellationException && request.purpose == StreamPurpose.DOWNLOAD) {
-                    throw InterruptedIOException("Download stream resolution was invalidated").apply {
+                if (cause is CancellationException) {
+                    throw InterruptedIOException("Audio stream resolution was invalidated").apply {
                         initCause(cause)
                     }
                 }
                 throw cause
             } catch (throwable: CancellationException) {
                 future.cancel(true)
-                if (request.purpose == StreamPurpose.DOWNLOAD) {
-                    throw InterruptedIOException("Download stream resolution was cancelled").apply {
-                        initCause(throwable)
-                    }
+                throw InterruptedIOException("Audio stream resolution was cancelled").apply {
+                    initCause(throwable)
                 }
-                throw throwable
             } catch (throwable: Throwable) {
                 future.cancel(true)
                 throw throwable
@@ -314,6 +299,9 @@ class ResolveAudioStreamUseCase
         }
 
         fun peek(request: AudioStreamRequest): ResolvedAudioStream? {
+            if (request.allowModules && request.pinnedFormatId == null && moduleAudio.enabled()) {
+                return moduleAudio.peek(request.mediaId, request.moduleMetadata)?.toResolvedAudioStream()
+            }
             val key = request.cacheKey()
             val resolved = cache[key] ?: return null
             if (isFresh(resolved)) return resolved
@@ -335,40 +323,14 @@ class ResolveAudioStreamUseCase
             priority: StreamResolutionPriority,
         ): ResolvedAudioStream {
             val resolvedAuthState =
-                if (request.authState.hasLoginCookie) {
-                    YTPlayerUtils.ensureYoutubeiPoTokensForPlayback(
-                        videoId = request.mediaId,
-                        authState = request.authState,
-                    )
-                } else {
-                    request.authState
-                }
-            return try {
-                youtubeiRepository.resolve(
-                    request = request.copy(authState = resolvedAuthState),
-                    priority = priority,
+                YTPlayerUtils.ensureYoutubeiPoTokensForPlayback(
+                    videoId = request.mediaId,
+                    authState = request.authState,
                 )
-            } catch (failure: Exception) {
-                coroutineContext.ensureActive()
-                if (!request.authState.hasLoginCookie ||
-                    (failure !is YTPlayerUtils.LoginRequiredForPlaybackException &&
-                        failure !is YTPlayerUtils.BotDetectionPlaybackException)
-                ) {
-                    throw failure
-                }
-                Timber.tag(TAG).i("Refreshing authenticated playback session for %s", request.mediaId)
-                youtubeiRepository.invalidateSessions()
-                val refreshedAuthState =
-                    YTPlayerUtils.ensureYoutubeiPoTokensForPlayback(
-                        videoId = request.mediaId,
-                        authState = request.authState,
-                        forceRefresh = true,
-                    )
-                youtubeiRepository.resolve(
-                    request = request.copy(authState = refreshedAuthState),
-                    priority = priority,
-                )
-            }
+            return youtubeiRepository.resolve(
+                request = request.copy(authState = resolvedAuthState),
+                priority = priority,
+            )
         }
 
         private fun AudioStreamRequest.resolutionPriority(
@@ -445,7 +407,5 @@ class ResolveAudioStreamUseCase
             const val TAG = "AudioStreamResolver"
             const val STREAM_EXPIRY_SAFETY_MS = 60_000L
             const val MAX_CACHE_ENTRIES = 256
-            const val PLAYBACK_RESOLUTION_TIMEOUT_SECONDS = 45L
-            const val DOWNLOAD_RESOLUTION_TIMEOUT_SECONDS = 180L
         }
     }

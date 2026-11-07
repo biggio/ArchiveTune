@@ -71,6 +71,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -94,6 +95,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
@@ -108,7 +110,6 @@ import moe.rukamori.archivetune.constants.LocalSongsSortTypeKey
 import moe.rukamori.archivetune.extensions.toMediaItem
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.localmedia.LocalSongScanConfig
-import moe.rukamori.archivetune.localmedia.SupportedLocalAudio
 import moe.rukamori.archivetune.playback.queues.ListQueue
 import moe.rukamori.archivetune.ui.component.LocalMenuState
 import moe.rukamori.archivetune.ui.component.SongListItem
@@ -138,8 +139,8 @@ fun LocalSongScreen(
     val playerConnection = LocalPlayerConnection.current ?: return
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
-    val songs by viewModel.songs.collectAsState()
-    val scanState by viewModel.scanState.collectAsState()
+    val songs by viewModel.songs.collectAsStateWithLifecycle()
+    val scanState by viewModel.scanState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val scanSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showScanSheet by rememberSaveable { mutableStateOf(false) }
@@ -186,6 +187,12 @@ fun LocalSongScreen(
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, storagePermission) == PackageManager.PERMISSION_GRANTED,
         )
+    }
+
+    LaunchedEffect(viewModel, hasStoragePermission) {
+        if (hasStoragePermission) {
+            viewModel.scanDevice(scanConfig)
+        }
     }
 
     val permissionLauncher =
@@ -238,15 +245,11 @@ fun LocalSongScreen(
     val visibleSongs by remember(songs, query, sortType, sortDescending, collator) {
         derivedStateOf {
             val normalizedQuery = query.trim()
-            val supportedSongs =
-                songs.filter { song ->
-                    SupportedLocalAudio.isSupportedMimeType(song.format?.mimeType)
-                }
             val filteredSongs =
                 if (normalizedQuery.isBlank()) {
-                    supportedSongs
+                    songs
                 } else {
-                    supportedSongs.filter { song ->
+                    songs.filter { song ->
                         song.song.title.contains(normalizedQuery, ignoreCase = true) ||
                             song.song.albumName
                                 .orEmpty()
@@ -694,7 +697,7 @@ private fun LocalSongScanSheet(
     onPrimaryAction: () -> Unit,
 ) {
     val lastSummary = scanState.lastSummary
-    val hasError = scanState.errorMessage != null
+    val hasError = scanState.errorMessageRes != null
     val hasSummary = lastSummary != null
     val sanitizedIncludedFolders =
         remember(includedFolders) {
@@ -754,6 +757,10 @@ private fun LocalSongScanSheet(
 
             !hasStoragePermission -> {
                 stringResource(R.string.local_songs_permission_body)
+            }
+
+            lastSummary?.metadataLookupFailed == true -> {
+                stringResource(R.string.local_songs_metadata_unavailable, lastSummary.scannedSongs)
             }
 
             hasSummary -> {
@@ -1160,7 +1167,7 @@ private fun LocalSongScanSheet(
             }
 
             AnimatedVisibility(
-                visible = hasError,
+                visible = hasError && scanState.errorMessageRes != R.string.local_songs_scan_failed,
                 enter = expandVertically(spring(stiffness = Spring.StiffnessLow)) + fadeIn(),
                 exit = shrinkVertically(spring(stiffness = Spring.StiffnessLow)) + fadeOut(),
             ) {
@@ -1184,7 +1191,7 @@ private fun LocalSongScanSheet(
                             modifier = Modifier.size(20.dp),
                         )
                         Text(
-                            text = scanState.errorMessage.orEmpty(),
+                            text = stringResource(scanState.errorMessageRes ?: R.string.local_songs_scan_failed),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.weight(1f),

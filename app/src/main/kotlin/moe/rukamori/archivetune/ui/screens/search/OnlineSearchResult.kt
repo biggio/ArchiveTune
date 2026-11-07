@@ -68,6 +68,7 @@ import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_ARTIST
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_COMMUNITY_PLAYLIST
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_FEATURED_PLAYLIST
+import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_PODCAST
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_SONG
 import moe.rukamori.archivetune.innertube.YouTube.SearchFilter.Companion.FILTER_VIDEO
 import moe.rukamori.archivetune.innertube.models.AlbumItem
@@ -93,6 +94,8 @@ import moe.rukamori.archivetune.ui.menu.YouTubeAlbumMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeArtistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubePlaylistMenu
 import moe.rukamori.archivetune.ui.menu.YouTubeSongMenu
+import moe.rukamori.archivetune.ui.utils.navigateToAlbum
+import moe.rukamori.archivetune.ui.utils.navigateToArtist
 import moe.rukamori.archivetune.viewmodels.OnlineSearchSort
 import moe.rukamori.archivetune.viewmodels.OnlineSearchViewModel
 
@@ -134,6 +137,7 @@ fun OnlineSearchResult(
                 FILTER_VIDEO to stringResource(R.string.filter_videos),
                 FILTER_ALBUM to stringResource(R.string.filter_albums),
                 FILTER_ARTIST to stringResource(R.string.filter_artists),
+                FILTER_PODCAST to stringResource(R.string.podcast),
                 FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
                 FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
             ).forEach { (sectionFilter, sectionTitle) ->
@@ -141,7 +145,7 @@ fun OnlineSearchResult(
                     ?.items
                     ?.takeIf { it.isNotEmpty() }
                     ?.let { items ->
-                        add(SearchSummary(title = sectionTitle, items = viewModel.sortedItems(items, searchSort)))
+                        add(SearchSummary(title = sectionTitle, items = items))
                     }
             }
         }
@@ -152,6 +156,7 @@ fun OnlineSearchResult(
                 FILTER_VIDEO,
                 FILTER_ALBUM,
                 FILTER_ARTIST,
+                FILTER_PODCAST,
                 FILTER_COMMUNITY_PLAYLIST,
                 FILTER_FEATURED_PLAYLIST,
             ).all { viewModel.viewStateMap.containsKey(it.value) }
@@ -249,11 +254,11 @@ fun OnlineSearchResult(
                                 }
 
                                 is AlbumItem -> {
-                                    navController.navigate("album/${item.id}")
+                                    navController.navigateToAlbum(item.id)
                                 }
 
                                 is ArtistItem -> {
-                                    navController.navigate("artist/${item.id}")
+                                    navController.navigateToArtist(item.id)
                                 }
 
                                 is PlaylistItem -> {
@@ -302,6 +307,7 @@ fun OnlineSearchResult(
                         FILTER_VIDEO to stringResource(R.string.filter_videos),
                         FILTER_ALBUM to stringResource(R.string.filter_albums),
                         FILTER_ARTIST to stringResource(R.string.filter_artists),
+                        FILTER_PODCAST to stringResource(R.string.podcast),
                         FILTER_COMMUNITY_PLAYLIST to stringResource(R.string.filter_community_playlists),
                         FILTER_FEATURED_PLAYLIST to stringResource(R.string.filter_featured_playlists),
                     ),
@@ -321,6 +327,7 @@ fun OnlineSearchResult(
                         FILTER_VIDEO to R.drawable.slow_motion_video,
                         FILTER_ALBUM to R.drawable.album,
                         FILTER_ARTIST to R.drawable.person,
+                        FILTER_PODCAST to R.drawable.mic,
                         FILTER_COMMUNITY_PLAYLIST to R.drawable.queue_music,
                         FILTER_FEATURED_PLAYLIST to R.drawable.playlist_play,
                     ),

@@ -105,6 +105,8 @@ import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
 import moe.rukamori.archivetune.ui.utils.ItemWrapper
 import moe.rukamori.archivetune.ui.utils.backToMain
 import moe.rukamori.archivetune.ui.utils.headerDownloadState
+import moe.rukamori.archivetune.ui.utils.navigateToAlbum
+import moe.rukamori.archivetune.ui.utils.navigateToArtist
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
 import moe.rukamori.archivetune.utils.makeTimeString
@@ -193,7 +195,7 @@ fun AlbumScreen(
     }
 
     LaunchedEffect(albumWithSongs) {
-        val songIds = albumWithSongs?.songs?.map { it.id }.orEmpty()
+        val songIds = albumWithSongs?.songs?.filterNot { it.song.isLocal }?.map { it.id }.orEmpty()
         if (songIds.isEmpty()) {
             downloads = emptyMap()
             downloadState = HeaderDownloadState.None
@@ -243,7 +245,7 @@ fun AlbumScreen(
                                 albumWithSongs.artists.fastForEachIndexed { index, artist ->
                                     withLink(
                                         LinkAnnotation.Clickable(artist.id) {
-                                            navController.navigate("artist/${artist.id}")
+                                            navController.navigateToArtist(artist.id)
                                         },
                                     ) {
                                         append(artist.name)
@@ -307,7 +309,7 @@ fun AlbumScreen(
                             }
                         },
                         additionalPrimaryActions = { contentColor ->
-                            if (albumWithSongs.songs.isNotEmpty()) {
+                            if (!albumWithSongs.album.isLocal && albumWithSongs.songs.any { !it.song.isLocal }) {
                                 MediaDetailAction(
                                     contentDescription =
                                         if (downloadState == HeaderDownloadState.Completed) {
@@ -413,7 +415,7 @@ fun AlbumScreen(
                 ) { index, songWrapper ->
                     SongListItem(
                         song = songWrapper.item,
-                        albumIndex = index + 1,
+                        albumIndex = songWrapper.item.song.trackNumber ?: (index + 1),
                         isActive = songWrapper.item.id == mediaMetadata?.id,
                         isPlaying = isPlaying,
                         showInLibraryIcon = true,
@@ -487,7 +489,7 @@ fun AlbumScreen(
                                     modifier =
                                         Modifier
                                             .combinedClickable(
-                                                onClick = { navController.navigate("album/${item.id}") },
+                                                onClick = { navController.navigateToAlbum(item.id) },
                                                 onLongClick = {
                                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                     menuState.show {
@@ -507,7 +509,7 @@ fun AlbumScreen(
             } else {
                 when (val state = uiState) {
                     AlbumUiState.Loading,
-                    AlbumUiState.Content,
+                    AlbumUiState.Success,
                     -> {
                         item(key = "shimmer") {
                             ShimmerHost {

@@ -24,8 +24,6 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import moe.rukamori.archivetune.BuildConfig
-import moe.rukamori.archivetune.constants.UpdateChannel
-import moe.rukamori.archivetune.defaultUpdateChannel
 import moe.rukamori.archivetune.musicrecognition.MusicRecognitionRoute
 import moe.rukamori.archivetune.musicrecognition.MusicRecognitionDetailsRoute
 import moe.rukamori.archivetune.ui.screens.BrowseScreen
@@ -41,6 +39,7 @@ import moe.rukamori.archivetune.ui.screens.playlist.AutoPlaylistScreen
 import moe.rukamori.archivetune.ui.screens.playlist.CachePlaylistScreen
 import moe.rukamori.archivetune.ui.screens.playlist.LocalPlaylistScreen
 import moe.rukamori.archivetune.ui.screens.playlist.OnlinePlaylistScreen
+import moe.rukamori.archivetune.ui.screens.playlist.SpotifyLikedSongsScreen
 import moe.rukamori.archivetune.ui.screens.playlist.SpotifyPlaylistScreen
 import moe.rukamori.archivetune.ui.screens.playlist.TopPlaylistScreen
 import moe.rukamori.archivetune.ui.screens.podcast.PodcastRoute
@@ -54,6 +53,7 @@ import moe.rukamori.archivetune.ui.screens.settings.AboutScreen
 import moe.rukamori.archivetune.ui.screens.settings.AccountSettings
 import moe.rukamori.archivetune.ui.screens.settings.AiIntegrationSettings
 import moe.rukamori.archivetune.ui.screens.settings.AodCustomizedScreen
+import moe.rukamori.archivetune.ui.screens.settings.AndroidAutoSettings
 import moe.rukamori.archivetune.ui.screens.settings.CanvasSettings
 import moe.rukamori.archivetune.ui.screens.settings.AppearanceSettings
 import moe.rukamori.archivetune.ui.screens.settings.BackupAndRestore
@@ -92,6 +92,7 @@ fun NavGraphBuilder.navigationBuilder(
     homeScrollConnection: NestedScrollConnection? = null,
     searchScrollConnection: NestedScrollConnection? = null,
     onlineSearchSort: OnlineSearchSort = OnlineSearchSort.DEFAULT,
+    libraryScrollBehavior: TopAppBarScrollBehavior,
 ) {
     composable(Screens.Home.route) {
         HomeScreen(
@@ -103,7 +104,7 @@ fun NavGraphBuilder.navigationBuilder(
     composable(
         Screens.Library.route,
     ) {
-        LibraryScreen(navController)
+        LibraryScreen(navController = navController, scrollBehavior = libraryScrollBehavior)
     }
     composable(Screens.Search.route) {
         SearchScreen(
@@ -156,9 +157,8 @@ fun NavGraphBuilder.navigationBuilder(
     composable(MusicRecognitionRoute) {
         MusicRecognitionScreen(navController)
     }
-    composable(MusicRecognitionDetailsRoute) { backStackEntry ->
-        val encodedTrack = backStackEntry.arguments?.getString("encodedTrack").orEmpty()
-        MusicRecognitionDetailsScreen(navController, encodedTrack)
+    composable(MusicRecognitionDetailsRoute) {
+        MusicRecognitionDetailsScreen(navController)
     }
     composable(Screens.MoodAndGenres.route) {
         MoodAndGenresScreen(navController)
@@ -184,7 +184,6 @@ fun NavGraphBuilder.navigationBuilder(
         BrowseScreen(
             navController,
             scrollBehavior,
-            it.arguments?.getString("browseId"),
         )
     }
     composable(
@@ -340,6 +339,9 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         SpotifyPlaylistScreen(navController, scrollBehavior)
     }
+    composable(route = "spotify_liked_songs") {
+        SpotifyLikedSongsScreen(navController, scrollBehavior)
+    }
     composable(
         route = "auto_playlist/{playlist}?tab={tab}",
         arguments =
@@ -436,8 +438,14 @@ fun NavGraphBuilder.navigationBuilder(
     composable("settings/player") {
         PlayerSettings(navController)
     }
+    composable("settings/modules") {
+        moe.rukamori.archivetune.ui.screens.settings.ModulesSettings(navController)
+    }
     composable("settings/canvas") {
         CanvasSettings(navController)
+    }
+    composable("settings/android_auto") {
+        AndroidAutoSettings(navController)
     }
     composable("settings/storage") {
         StorageSettings(navController)
@@ -478,20 +486,8 @@ fun NavGraphBuilder.navigationBuilder(
             UpdateScreen(navController, onUpToDate = onClearUpdateBadge)
         }
     }
-    composable(
-        route = "settings/changelog?channel={channel}",
-        arguments =
-            listOf(
-                navArgument("channel") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
-            ),
-    ) { backStackEntry ->
-        val channelName = backStackEntry.arguments?.getString("channel")
-        val channel = UpdateChannel.fromStoredName(channelName, defaultUpdateChannel)
-        ChangelogScreen(navController, channel = channel)
+    composable("settings/changelog") {
+        ChangelogScreen(navController)
     }
     composable("settings/about") {
         AboutScreen(navController)

@@ -45,6 +45,7 @@ data class HomeUiState(
     val accountPlaylists: ImmutableList<PlaylistItem>,
     val homePage: HomePage?,
     val remoteQuickPicks: HomePage.Section?,
+    val communitySection: HomePage.Section?,
     val selectedChip: HomePage.Chip?,
     val accountName: String,
     val accountImageUrl: String?,
@@ -55,6 +56,8 @@ data class HomeUiState(
     val isRefreshing: Boolean,
     val isLoadingMore: Boolean,
 )
+
+fun HomePage.Section.hasVisibleContent(): Boolean = items.isNotEmpty() || featuredCards.isNotEmpty()
 
 sealed interface HomeAction {
     data object Refresh : HomeAction

@@ -98,6 +98,7 @@ import moe.rukamori.archivetune.constants.PlayerDesignStyle
 import moe.rukamori.archivetune.constants.PlayerDesignStyleKey
 import moe.rukamori.archivetune.constants.SpeedDialSongIdsKey
 import moe.rukamori.archivetune.models.MediaMetadata
+import moe.rukamori.archivetune.ui.component.rememberControlledSliderState
 import moe.rukamori.archivetune.playback.CanvasArtworkRefetchResult
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.ui.component.BottomSheetState
@@ -106,6 +107,8 @@ import moe.rukamori.archivetune.ui.component.MenuSurfaceSection
 import moe.rukamori.archivetune.ui.component.NewAction
 import moe.rukamori.archivetune.ui.component.NewActionGrid
 import moe.rukamori.archivetune.ui.player.rememberDeviceMusicVolumeController
+import moe.rukamori.archivetune.ui.utils.navigateToAlbum
+import moe.rukamori.archivetune.ui.utils.navigateToArtist
 import moe.rukamori.archivetune.utils.ExternalDownloaderLaunchResult
 import moe.rukamori.archivetune.utils.SpeedDialPin
 import moe.rukamori.archivetune.utils.SpeedDialPinType
@@ -130,6 +133,8 @@ fun PlayerMenu(
     navController: NavController,
     playerBottomSheetState: BottomSheetState,
     isQueueTrigger: Boolean? = false,
+    sleepTimerEnabled: Boolean = false,
+    onSleepTimerClick: (() -> Unit)? = null,
     onPlayNextFromQueue: (() -> Unit)? = null,
     onRemoveFromQueue: (() -> Unit)? = null,
     onShowDetailsDialog: () -> Unit,
@@ -287,7 +292,7 @@ fun PlayerMenu(
                             .fillMaxWidth()
                             .clickable {
                                 splitArtist.originalArtist?.let { artist ->
-                                    navController.navigate("artist/${artist.id}")
+                                    navController.navigateToArtist(artist.id)
                                     showSelectArtistDialog = false
                                     playerBottomSheetState.collapseSoft()
                                     onDismiss()
@@ -439,6 +444,42 @@ fun PlayerMenu(
                     actions =
                         buildList {
                             castPlayerMenuAction?.let(::add)
+                            onSleepTimerClick?.let { onClick ->
+                                add(
+                                    NewAction(
+                                        icon = {
+                                            Icon(
+                                                painter = painterResource(R.drawable.bedtime),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(28.dp),
+                                                tint =
+                                                    if (sleepTimerEnabled) {
+                                                        MaterialTheme.colorScheme.primary
+                                                    } else {
+                                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                                    },
+                                            )
+                                        },
+                                        text = stringResource(R.string.sleep_timer),
+                                        onClick = {
+                                            onDismiss()
+                                            onClick()
+                                        },
+                                        backgroundColor =
+                                            if (sleepTimerEnabled) {
+                                                MaterialTheme.colorScheme.primaryContainer
+                                            } else {
+                                                Color.Unspecified
+                                            },
+                                        contentColor =
+                                            if (sleepTimerEnabled) {
+                                                MaterialTheme.colorScheme.onPrimaryContainer
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
+                                    ),
+                                )
+                            }
                             if (!isLocalMedia && !mediaMetadata.isPodcast) {
                                 add(
                                     NewAction(
@@ -613,7 +654,7 @@ fun PlayerMenu(
                                         text = stringResource(R.string.music_together),
                                         onClick = {
                                             onDismiss()
-                                            playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
+                                            playerBottomSheetState.collapseSoft()
                                             navController.navigate("settings/music_together")
                                         },
                                     ),
@@ -634,7 +675,11 @@ fun PlayerMenu(
                                         },
                                         text = stringResource(R.string.aod_mode),
                                         onClick = {
-                                            onAodFeatureEnabledChange(!aodFeatureEnabled)
+                                            if (!aodFeatureEnabled) {
+                                                onAodFeatureEnabledChange(true)
+                                            }
+                                            playerConnection.aodModeEnabled.value = true
+                                            onDismiss()
                                         },
                                         backgroundColor = aodBgColor,
                                         contentColor = aodContentColor,
@@ -666,8 +711,8 @@ fun PlayerMenu(
                                     Modifier.clickable {
                                         if (splitArtists.size == 1 && splitArtists[0].originalArtist != null) {
                                             onDismiss()
-                                            playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
-                                            navController.navigate("artist/${splitArtists[0].originalArtist!!.id}")
+                                            playerBottomSheetState.collapseSoft()
+                                            navController.navigateToArtist(splitArtists[0].originalArtist!!.id)
                                         } else {
                                             showSelectArtistDialog = true
                                         }
@@ -695,8 +740,8 @@ fun PlayerMenu(
                                 modifier =
                                     Modifier.clickable {
                                         onDismiss()
-                                        playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
-                                        navController.navigate("album/${mediaMetadata.album.id}")
+                                        playerBottomSheetState.collapseSoft()
+                                        navController.navigateToAlbum(mediaMetadata.album.id)
                                     },
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                             )
@@ -1045,17 +1090,22 @@ private fun VolumeSliderL(
     LaunchedEffect(safeValue) {
         if (!isDragging) sliderValue = safeValue
     }
+    val sliderState =
+        rememberControlledSliderState(
+            value = sliderValue,
+            valueRange = 0f..1f,
+        )
 
     Slider(
-        value = sliderValue,
+        state = sliderState,
         onValueChange = { updated ->
             isDragging = true
             val coerced = updated.coerceIn(0f, 1f)
+            sliderState.value = coerced
             sliderValue = coerced
             onValueChange(coerced)
         },
         onValueChangeFinished = { isDragging = false },
-        valueRange = 0f..1f,
         modifier = modifier.height(36.dp),
         thumb = {
             Box(

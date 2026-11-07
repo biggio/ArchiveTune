@@ -8,6 +8,10 @@
 package moe.rukamori.archivetune.podcast
 
 import com.google.common.collect.ImmutableList
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.innertube.models.EpisodeItem
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.models.toMediaMetadata
@@ -38,8 +42,8 @@ class LoadPodcastUseCase
                         .distinctBy(EpisodeItem::id)
                         .map { episode ->
                             episode.toUiModel(
-                                fallbackPodcastTitle = page.podcast.title,
-                                fallbackPodcastBrowseId = page.podcast.browseId,
+                                podcastTitle = page.podcast.title,
+                                podcastBrowseId = page.podcast.browseId,
                             )
                         }.toList()
                 PodcastLoadResult(
@@ -51,6 +55,8 @@ class LoadPodcastUseCase
                             description = page.description,
                             thumbnailUrl = page.podcast.thumbnail,
                             episodes = ImmutableList.copyOf(episodes),
+                            isSaved = page.isSaved,
+                            isSavePending = false,
                             isLoadingMore = false,
                             canLoadMore = !page.continuation.isNullOrBlank(),
                         ),
@@ -79,8 +85,8 @@ class LoadPodcastContinuationUseCase
                         .distinctBy(EpisodeItem::id)
                         .map { episode ->
                             episode.toUiModel(
-                                fallbackPodcastTitle = podcastTitle,
-                                fallbackPodcastBrowseId = podcastBrowseId,
+                                podcastTitle = podcastTitle,
+                                podcastBrowseId = podcastBrowseId,
                             )
                         }.toList()
                 PodcastContinuationResult(
@@ -92,29 +98,83 @@ class LoadPodcastContinuationUseCase
     }
 
 private fun EpisodeItem.toUiModel(
-    fallbackPodcastTitle: String,
-    fallbackPodcastBrowseId: String,
+    podcastTitle: String,
+    podcastBrowseId: String,
 ): PodcastEpisodeUiModel {
-    val resolvedPodcastTitle = podcast?.name?.takeIf(String::isNotBlank) ?: fallbackPodcastTitle
-    val resolvedPodcastId = podcast?.id?.takeIf(String::isNotBlank) ?: fallbackPodcastBrowseId
     val metadata =
         toMediaMetadata().let { current ->
             current.copy(
-                artists =
-                    current.artists.ifEmpty {
-                        listOf(MediaMetadata.Artist(id = resolvedPodcastId, name = resolvedPodcastTitle))
-                    },
-                album = current.album ?: MediaMetadata.Album(id = fallbackPodcastBrowseId, title = fallbackPodcastTitle),
+                artists = listOf(MediaMetadata.Artist(id = podcastBrowseId, name = podcastTitle)),
+                album = MediaMetadata.Album(id = podcastBrowseId, title = podcastTitle),
             )
         }
     return PodcastEpisodeUiModel(
         id = id,
         title = title,
-        podcastTitle = resolvedPodcastTitle,
+        podcastTitle = podcastTitle,
         description = description,
         dateText = dateText,
         durationText = durationText,
         thumbnailUrl = thumbnail,
         playbackMetadata = metadata,
+        isInLibrary = false,
+        isLibraryPending = false,
     )
 }
+
+class ObservePodcastLibraryMembershipUseCase
+    @Inject
+    constructor(
+        private val repository: PodcastRepository,
+    ) {
+        operator fun invoke(
+            browseId: String,
+            episodeIds: List<String>,
+        ): Flow<PodcastLibraryMembership> = repository.observeLibraryMembership(browseId, episodeIds)
+    }
+
+class TogglePodcastSaveUseCase
+    @Inject
+    constructor(
+        private val repository: PodcastRepository,
+    ) {
+        suspend operator fun invoke(
+            browseId: String,
+            save: Boolean,
+        ): Result<Unit> = repository.setPodcastSaved(browseId, save)
+    }
+
+class ToggleEpisodeLibraryUseCase
+    @Inject
+    constructor(
+        private val repository: PodcastRepository,
+    ) {
+        suspend operator fun invoke(
+            metadata: MediaMetadata,
+            addToLibrary: Boolean,
+        ): Result<Unit> = repository.setEpisodeInLibrary(metadata, addToLibrary)
+    }
+
+class SearchPodcastEpisodesUseCase
+    @Inject
+    constructor() {
+        private val whitespace = Regex("\\s+")
+
+        suspend operator fun invoke(
+            episodes: ImmutableList<PodcastEpisodeUiModel>,
+            query: String,
+        ): ImmutableList<PodcastEpisodeUiModel> =
+            withContext(Dispatchers.Default) {
+                val terms = query.trim().splitToSequence(whitespace).filter(String::isNotBlank).toList()
+                if (terms.isEmpty()) return@withContext episodes
+                ImmutableList.copyOf(
+                    episodes.filter { episode ->
+                        ensureActive()
+                        terms.all { term ->
+                            episode.title.contains(term, ignoreCase = true) ||
+                                episode.description?.contains(term, ignoreCase = true) == true
+                        }
+                    },
+                )
+            }
+    }

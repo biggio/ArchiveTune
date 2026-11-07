@@ -22,6 +22,7 @@ import moe.rukamori.archivetune.morideobfuscator.youtubei.YoutubeiResolutionPrio
 import moe.rukamori.archivetune.morideobfuscator.youtubei.YoutubeiResolver
 import moe.rukamori.archivetune.morideobfuscator.youtubei.YoutubeiStreamRequest
 import moe.rukamori.archivetune.utils.YTPlayerUtils
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import timber.log.Timber
 import java.util.TimeZone
 import javax.inject.Inject
@@ -82,9 +83,9 @@ class YoutubeiStreamRepository
                                 authFingerprint = authState.streamCacheFingerprint,
                                 pinnedItag = request.pinnedFormatId,
                                 requiresSongMetadata = request.requiresSongMetadata,
-                                cookie = authState.cookie,
+                                cookie = authState.cookie.takeIf { authState.hasLoginCookie },
                                 visitorData = authState.visitorData,
-                                dataSyncId = authState.dataSyncId,
+                                dataSyncId = authState.dataSyncId.takeIf { authState.hasLoginCookie },
                                 sessionPoToken = authState.poTokenGvsSession,
                                 videoPoToken =
                                     authState.poTokenGvs?.takeIf {
@@ -115,13 +116,27 @@ class YoutubeiStreamRepository
                     ) {
                         throw YTPlayerUtils.BotDetectionPlaybackException(
                             videoId = request.mediaId,
-                            clients = setOf(if (authState.hasLoginCookie) "WEB_CREATOR" else "VISIONOS"),
+                            clients = setOf(if (authState.hasLoginCookie) "WEB_CREATOR" else "MWEB"),
                             cause = failure,
                         )
                     }
                     if (failure.kind == YoutubeiFailureKind.LOGIN_REQUIRED ||
                         failure.kind == YoutubeiFailureKind.HTTP && failure.httpStatus == 401
                     ) {
+                        if (!failure.requiresContentConfirmation()) {
+                            if (!authState.hasLoginCookie) {
+                                throw YTPlayerUtils.BadStreamPlayerResponseException(
+                                    videoId = request.mediaId,
+                                    failedClients = setOf("MWEB"),
+                                    cause = failure,
+                                )
+                            }
+                            throw YTPlayerUtils.InvalidPlaybackLoginContextException(
+                                videoId = request.mediaId,
+                                targetUrl = request.mediaUrl,
+                                cause = failure,
+                            )
+                        }
                         throw YTPlayerUtils.LoginRequiredForPlaybackException(
                             videoId = request.mediaId,
                             targetUrl = request.mediaUrl,
@@ -132,6 +147,29 @@ class YoutubeiStreamRepository
                     throw failure
                 }
 
+            val streamUrl = resolved.url.toHttpUrlOrNull()
+            val streamToken = streamUrl?.queryParameter("pot")
+            val tokenBinding =
+                when {
+                    streamToken.isNullOrBlank() -> "missing"
+                    streamToken == authState.poTokenGvs && authState.poTokenGvsVideoId == request.mediaId -> "video"
+                    streamToken == authState.poTokenGvsSession -> "session"
+                    else -> "other"
+                }
+            Timber.tag("YoutubeiResolver").d(
+                "Stream contract signedIn=%s format=%d tokenBinding=%s nPresent=%s nError=%s " +
+                    "signaturePresent=%s userAgentPresent=%s extractionProxy=%s streamProxy=%s",
+                authState.hasLoginCookie,
+                resolved.formatId,
+                tokenBinding,
+                !streamUrl?.queryParameter("n").isNullOrBlank(),
+                streamUrl?.queryParameter("n")?.startsWith("enhanced_except_") == true,
+                !streamUrl?.queryParameter("sig").isNullOrBlank() ||
+                    !streamUrl?.queryParameter("signature").isNullOrBlank(),
+                resolved.requestHeaders.any { (name, value) -> name.equals("User-Agent", ignoreCase = true) && value.isNotBlank() },
+                YouTube.proxy?.type()?.name ?: "DIRECT",
+                YouTube.streamOkHttpProxy.type().name,
+            )
             return ResolvedAudioStream(
                 url = resolved.url,
                 requestHeaders = resolved.requestHeaders,
@@ -182,6 +220,31 @@ class YoutubeiStreamRepository
 
         private val AudioStreamRequest.mediaUrl: String
             get() = "https://music.youtube.com/watch?v=$mediaId"
+
+        private fun YoutubeiException.requiresContentConfirmation(): Boolean {
+            if (httpStatus == 401) return false
+            val reason = message.orEmpty()
+            return CONTENT_CONFIRMATION_REASONS.any { reason.contains(it, ignoreCase = true) }
+        }
+
+        private companion object {
+            val CONTENT_CONFIRMATION_REASONS =
+                listOf(
+                    "confirm your age",
+                    "verify your age",
+                    "age-restricted",
+                    "age restricted",
+                    "age verification",
+                    "AGE_CHECK_REQUIRED",
+                    "AGE_VERIFICATION_REQUIRED",
+                    "CONTENT_CHECK_REQUIRED",
+                    "inappropriate for some users",
+                    "mature audiences",
+                    "private video",
+                    "members-only",
+                    "members only",
+                )
+        }
     }
 
 internal enum class StreamResolutionPriority {
