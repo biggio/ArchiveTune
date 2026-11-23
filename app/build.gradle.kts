@@ -74,7 +74,7 @@ android {
         minSdk = 26
         targetSdk = 37
         versionCode = 14302
-        versionName = "16.0.0-r2"
+        versionName = "16.0.0-r2" // Release v16.0.0-r2 with fixed keystore
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
