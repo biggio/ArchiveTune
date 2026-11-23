@@ -72,10 +72,14 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MediumFlexibleTopAppBar
 import androidx.compose.material3.MotionScheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -87,6 +91,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.toShape
@@ -138,9 +143,8 @@ import moe.rukamori.archivetune.BuildConfig
 import moe.rukamori.archivetune.LocalAnimationsDisabled
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
-import androidx.compose.material3.OutlinedTextField
-import moe.rukamori.archivetune.constants.UpdateRepositoryOwnerKey
 import moe.rukamori.archivetune.constants.UpdateRepositoryNameKey
+import moe.rukamori.archivetune.constants.UpdateRepositoryOwnerKey
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.player.EditorialMorphShape
 import moe.rukamori.archivetune.ui.utils.appBarScrollBehavior
@@ -199,18 +203,6 @@ fun UpdateScreen(
     val updateSettingsControlsEnabled = updateSettingsState is UpdateSettingsScreenState.Success
     val updateSettingsErrorRes = (updateSettingsState as? UpdateSettingsScreenState.Error)?.messageRes
     val onUpdateSettingsAction = remember(viewModel) { viewModel::onAction }
-    val (updateRepoOwner, onUpdateRepoOwnerChange) =
-        rememberPreference(
-            UpdateRepositoryOwnerKey,
-            defaultValue = BuildConfig.RELEASE_GITHUB_OWNER,
-        )
-    val (updateRepoName, onUpdateRepoNameChange) =
-        rememberPreference(
-            UpdateRepositoryNameKey,
-            defaultValue = BuildConfig.RELEASE_GITHUB_REPO,
-        )
-    var showCustomRepoDialog by rememberSaveable { mutableStateOf(false) }
-    var customRepoInput by rememberSaveable { mutableStateOf("$updateRepoOwner/$updateRepoName") }
     var isHistoryExpanded by rememberSaveable { mutableStateOf(true) }
     var hasNotificationPermission by remember {
         mutableStateOf(
@@ -271,6 +263,28 @@ fun UpdateScreen(
             launchSingleTop = true
         }
     }
+
+    val (updateRepoOwner, onUpdateRepoOwnerChange) =
+        rememberPreference(
+            UpdateRepositoryOwnerKey,
+            defaultValue = BuildConfig.RELEASE_GITHUB_OWNER,
+        )
+    val (updateRepoName, onUpdateRepoNameChange) =
+        rememberPreference(
+            UpdateRepositoryNameKey,
+            defaultValue = BuildConfig.RELEASE_GITHUB_REPO,
+        )
+    var showCustomRepoDialog by rememberSaveable { mutableStateOf(false) }
+    var customRepoInput by rememberSaveable { mutableStateOf("$updateRepoOwner/$updateRepoName") }
+
+    val onUpdateSourceChange: (String, String) -> Unit = { newOwner, newRepo ->
+        onUpdateRepoOwnerChange(newOwner)
+        onUpdateRepoNameChange(newRepo)
+        coroutineScope.launch {
+            Updater.clearReleaseCache()
+            onCheckForUpdate()
+        }
+    }
     val onOpenChangelog: () -> Unit = {
         navController.navigate("settings/changelog")
     }
@@ -289,14 +303,6 @@ fun UpdateScreen(
             }
         }
     }
-    val onUpdateSourceChange: (String, String) -> Unit = { newOwner, newRepo ->
-        onUpdateRepoOwnerChange(newOwner)
-        onUpdateRepoNameChange(newRepo)
-        coroutineScope.launch {
-            Updater.clearReleaseCache()
-            onCheckForUpdate()
-        }
-    }
     val permissionLauncher =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.RequestPermission(),
@@ -306,6 +312,27 @@ fun UpdateScreen(
                 onUpdateSettingsAction(UpdateSettingsAction.SetNotificationsEnabled(true))
             }
         }
+    val onUpdateNotificationChange: (Boolean) -> Unit = { enabled ->
+        if (
+            enabled &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            !hasNotificationPermission
+        ) {
+            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            onUpdateSettingsAction(UpdateSettingsAction.SetNotificationsEnabled(enabled))
+        }
+    }
+    val onAutomaticUpdateChecksChange: (Boolean) -> Unit = { enabled ->
+        onUpdateSettingsAction(UpdateSettingsAction.SetAutomaticChecksEnabled(enabled))
+    }
+
+    val motionScheme = MaterialTheme.motionScheme
+    val contentModifier =
+        Modifier
+            .fillMaxWidth()
+            .widthIn(max = maximumContentWidth)
+
     if (showCustomRepoDialog) {
         AlertDialog(
             onDismissRequest = { showCustomRepoDialog = false },
@@ -345,29 +372,6 @@ fun UpdateScreen(
             },
         )
     }
-
-    val onUpdateNotificationChange: (Boolean) -> Unit = { enabled ->
-        if (
-            enabled &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            !hasNotificationPermission
-        ) {
-            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            onUpdateSettingsAction(UpdateSettingsAction.SetNotificationsEnabled(enabled))
-        }
-    }
-        }
-    }
-    val onAutomaticUpdateChecksChange: (Boolean) -> Unit = { enabled ->
-        onUpdateSettingsAction(UpdateSettingsAction.SetAutomaticChecksEnabled(enabled))
-    }
-
-    val motionScheme = MaterialTheme.motionScheme
-    val contentModifier =
-        Modifier
-            .fillMaxWidth()
-            .widthIn(max = maximumContentWidth)
 
     Scaffold(
         modifier =
@@ -425,7 +429,6 @@ fun UpdateScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-
             if (useWideLayout) {
                 item(key = "overview", contentType = "overview") {
                     val entrance = rememberEntranceProgress(order = 0)
@@ -452,6 +455,14 @@ fun UpdateScreen(
                                 controlsEnabled = updateSettingsControlsEnabled,
                                 onAutomaticUpdateChecksChange = onAutomaticUpdateChecksChange,
                                 onUpdateNotificationChange = onUpdateNotificationChange,
+                                updateRepoOwner = updateRepoOwner,
+                                updateRepoName = updateRepoName,
+                                onSelectFork = { onUpdateSourceChange("biggio", "ArchiveTune") },
+                                onSelectOfficial = { onUpdateSourceChange("rukamori", "ArchiveTune") },
+                                onOpenCustomDialog = {
+                                    customRepoInput = "$updateRepoOwner/$updateRepoName"
+                                    showCustomRepoDialog = true
+                                },
                             )
                             EarlyAccessCard(onJoin = onJoinEarlyAccess)
                         }
@@ -475,6 +486,14 @@ fun UpdateScreen(
                         controlsEnabled = updateSettingsControlsEnabled,
                         onAutomaticUpdateChecksChange = onAutomaticUpdateChecksChange,
                         onUpdateNotificationChange = onUpdateNotificationChange,
+                        updateRepoOwner = updateRepoOwner,
+                        updateRepoName = updateRepoName,
+                        onSelectFork = { onUpdateSourceChange("biggio", "ArchiveTune") },
+                        onSelectOfficial = { onUpdateSourceChange("rukamori", "ArchiveTune") },
+                        onOpenCustomDialog = {
+                            customRepoInput = "$updateRepoOwner/$updateRepoName"
+                            showCustomRepoDialog = true
+                        },
                         modifier = contentModifier.entranceReveal(rememberEntranceProgress(order = 1)),
                     )
                 }
@@ -1007,6 +1026,104 @@ private fun UpdatePreferencesSection(
                 onCheckedChange = onUpdateNotificationChange,
             )
         }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.extraLarge,
+            colors =
+                CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                ),
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                painter = painterResource(R.drawable.sync),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            )
+                        }
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.update_source),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = "$updateRepoOwner/$updateRepoName",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    val isFork =
+                        updateRepoOwner.equals("biggio", ignoreCase = true) &&
+                            updateRepoName.equals("ArchiveTune", ignoreCase = true)
+                    val isOfficial =
+                        updateRepoOwner.equals("rukamori", ignoreCase = true) &&
+                            updateRepoName.equals("ArchiveTune", ignoreCase = true)
+                    val isCustom = !isFork && !isOfficial
+
+                    SegmentedButton(
+                        selected = isFork,
+                        onClick = onSelectFork,
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
+                        icon = {},
+                    ) {
+                        Text(
+                            text = stringResource(R.string.update_source_fork),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    SegmentedButton(
+                        selected = isOfficial,
+                        onClick = onSelectOfficial,
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
+                        icon = {},
+                    ) {
+                        Text(
+                            text = stringResource(R.string.update_source_official),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    SegmentedButton(
+                        selected = isCustom,
+                        onClick = onOpenCustomDialog,
+                        shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                        icon = {},
+                    ) {
+                        Text(
+                            text = stringResource(R.string.update_source_custom),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1170,91 +1287,6 @@ private fun EarlyAccessCard(
                     )
                     Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
                     Text(text = stringResource(R.string.join))
-                }
-            }
-        }
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.extraLarge,
-            colors =
-                CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                ),
-        ) {
-            Column(
-                modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    FeatureIcon(
-                        iconRes = R.drawable.sync,
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.update_source),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = "$updateRepoOwner/$updateRepoName",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Medium,
-                        )
-                    }
-                }
-
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    val isFork = updateRepoOwner.equals("biggio", ignoreCase = true) && updateRepoName.equals("ArchiveTune", ignoreCase = true)
-                    val isOfficial = updateRepoOwner.equals("rukamori", ignoreCase = true) && updateRepoName.equals("ArchiveTune", ignoreCase = true)
-                    val isCustom = !isFork && !isOfficial
-
-                    SegmentedButton(
-                        selected = isFork,
-                        onClick = onSelectFork,
-                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
-                        icon = {},
-                    ) {
-                        Text(
-                            text = stringResource(R.string.update_source_fork),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    SegmentedButton(
-                        selected = isOfficial,
-                        onClick = onSelectOfficial,
-                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
-                        icon = {},
-                    ) {
-                        Text(
-                            text = stringResource(R.string.update_source_official),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    SegmentedButton(
-                        selected = isCustom,
-                        onClick = onOpenCustomDialog,
-                        shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
-                        icon = {},
-                    ) {
-                        Text(
-                            text = stringResource(R.string.update_source_custom),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
                 }
             }
         }

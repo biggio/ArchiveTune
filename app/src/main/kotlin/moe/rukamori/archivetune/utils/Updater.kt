@@ -372,7 +372,8 @@ object Updater {
         val owner = getReleaseOwner()
         val repo = getReleaseRepo()
         val response: HttpResponse =
-            client.get("https://api.github.com/repos/$owner/$repo/releases?per_page=$perPage") {`r`n                timeout { requestTimeoutMillis = 10_000 }
+            client.get("https://api.github.com/repos/$owner/$repo/releases?per_page=$perPage") {
+                timeout { requestTimeoutMillis = 10_000 }
                 headers {
                     append("Accept", "application/vnd.github+json")
                     append("User-Agent", "ArchiveTune")
