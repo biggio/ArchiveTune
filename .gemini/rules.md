@@ -13,6 +13,7 @@
   - 採用 **`<upstream-version>-r<N>`** 獨立修訂版號架構（當前版本：`16.0.0-r1`，對應上游 `16.0.0`）。
   - **核心精神**：保留 upstream 主版本號（如 `16.0.0`），後綴個人修訂號（`-r1`, `-r2`），避免上游更新時產生版本合併衝突。
   - `versionCode` 採用 `(upstream_versionCode * 100) + revision`（例如上游 143 -> 本專案 `14301`），確保 Android 系統安裝升級時 versionCode 永遠單調遞增（14301 > 14201）。
+  - **自動推送版本 Tag 規範**：**只要 upstream 有新版更新，完成同步與驗證後，必須一併建立並推送版本 Tag（例如 `v16.0.0-r1`）至 GitHub**。此操作會自動觸發 GitHub Actions 的 `ota-release.yml` 工作流進行編譯並建立 GitHub Release，確保 OTA 更新通道第一時間向使用者推送最新版本。
 
 ---
 
@@ -126,24 +127,35 @@ export PATH="$JAVA_HOME/bin:$PATH"
 ./gradlew spotlessApply
 ```
 
-### 如何發布新的 OTA 更新 (例如發布 16.0.0-r1)
-1. 修改 `app/build.gradle.kts`：
-   ```kotlin
-   versionCode = 14301
-   versionName = "16.0.0-r1"
-   ```
-2. 提交代碼並推送：
+### 同步上游更新與發布標準流程 (Upstream Sync & Release SOP)
+每當官方 upstream 發布新版本時，請依照下列標準 SOP 執行：
+1. **抓取上游更新並合併**：
    ```bash
-   git add app/build.gradle.kts
-   git commit -m "bump: 16.0.0-r1"
+   git fetch upstream
+   git merge upstream/main
+   git submodule update --init --recursive
+   ```
+2. **依規範調整版本號 (`app/build.gradle.kts`)**：
+   - 保留上游版本號作為主版號，後綴 `-r1`，並換算相應的 `versionCode`：
+     ```kotlin
+     versionCode = 14301 // (upstream_versionCode * 100) + revision
+     versionName = "16.0.0-r1"
+     ```
+3. **解決衝突與編譯驗證**：
+   ```bash
+   ./gradlew :app:compileGmsMobileUniversalDebugKotlin -x lint
+   ```
+4. **提交代碼並推送至 `main`**：
+   ```bash
    git push origin main
    ```
-3. 打上 Tag 並推送：
-   ```bash
-   git tag v16.0.0-r1
-   git push origin v16.0.0-r1
-   ```
-4. GitHub Actions 的 `ota-release.yml` 會自動編譯 Universal APK 並發布至 GitHub Releases，使用者手機將於「設定 > 檢查更新」自動收到更新提示！
+5. **一併建立並推送版本 Tag 到 GitHub（觸發 OTA 發布）**：
+   - **核心規範**：**只要 upstream 有新版更新，完成同步後必須一併建立並推送版本 Tag 至 GitHub**。
+     ```bash
+     git tag v16.0.0-r1
+     git push origin v16.0.0-r1
+     ```
+   - GitHub Actions 的 `ota-release.yml` 會自動觸發建置流程，編譯 Universal APK 並發布至 GitHub Releases，使用者即可在 App 的「設定 > 檢查更新」立即收到 OTA 更新通知！
 
 ---
 
