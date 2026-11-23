@@ -81,12 +81,12 @@ git remote add upstream https://github.com/rukamori/ArchiveTune.git
   4. **未知來源安裝權限引導**：`app/src/main/kotlin/moe/rukamori/archivetune/utils/AppUpdateInstaller.kt` 在 Android 8.0+ 自動引導開啟 `ACTION_MANAGE_UNKNOWN_APP_SOURCES` 權限。
   5. **專屬發布工作流**：`.github/workflows/ota-release.yml` 支援推送標籤 `v*` 自動打包發布 Universal APK。
 
-### ④ 獨立修訂版號比較器 (`15.0.0-r<N>`)
-- **功能描述**：官方原版 SemVer 僅比對 3 段式 `X.Y.Z`，若使用 `-r1` 會被誤判為 Pre-release 而無法從 `15.0.0` 升級。
+### ④ 獨立修訂版號比較器 (`<upstream-version>-r<N>`)
+- **功能描述**：官方原版 SemVer 僅比對 3 段式 `X.Y.Z`，若使用 `-r1` 會被誤判為 Pre-release 而無法從上游官方版本順利升級。
 - **核心代碼檔案**：
   - `app/src/main/kotlin/moe/rukamori/archivetune/utils/Updater.kt`：
     - 正則式升級：`Regex("""(?i)\bv?(\d+)\.(\d+)\.(\d+)(?:(?:\.|\-r)(\d+))?(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?\b""")`
-    - `SemVer` 結構新增 `revision: Int = 0`，支援精確判定 `15.0.0-r1 > 15.0.0` 與 `15.0.0-r2 > 15.0.0-r1`，並完全相容未來的上游更新（`15.0.1 > 15.0.0-r<N>`）。
+    - `SemVer` 結構新增 `revision: Int = 0`，支援精確判定 `16.0.0-r1 > 16.0.0` 與 `16.0.0-r2 > 16.0.0-r1`，並完全相容未來的上游更新（`16.0.1 > 16.0.0-r<N>`）。
 
 ### ⑤ libquickjs.so 閃退熱修復 (Hotfix: YouTube Player Script Crash) [已隨上游修復解除]
 - **問題背景**：YouTube 於 2026 年 9 月更換播放器 `base.js`，引入深層遞迴陣列轉換，導致內嵌的 QuickJS 引擎原生執行緒 Stack 耗盡爆掉（`libquickjs.so` SIGSEGV 閃退）。
