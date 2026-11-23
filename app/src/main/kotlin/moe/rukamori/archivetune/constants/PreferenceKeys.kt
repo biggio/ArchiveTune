@@ -202,6 +202,7 @@ val EnableBetterLyricsKey = booleanPreferencesKey("enableBetterLyrics")
 val EnableBetterLyricsPortatoKey = booleanPreferencesKey("enableBetterLyricsPortato")
 val EnableYouLyPlusLyricsKey = booleanPreferencesKey("enableYouLyPlusLyrics")
 val EnableBinimumLyricsKey = booleanPreferencesKey("enableBinimumLyrics")
+val EnableLrcRedLyricsKey = booleanPreferencesKey("enableLrcRedLyrics")
 val EnableSimpMusicLyricsKey = booleanPreferencesKey("enableSimpMusicLyrics")
 val EnableMegalobizLyricsKey = booleanPreferencesKey("enableMegalobizLyrics")
 val EnablePaxsenixLyricsKey = booleanPreferencesKey("enablePaxsenixLyrics")
@@ -210,6 +211,7 @@ val EnablePaxsenixAppleMusicLyricsKey = booleanPreferencesKey("enablePaxsenixApp
 val EnablePaxsenixSpotifyLyricsKey = booleanPreferencesKey("enablePaxsenixSpotifyLyrics")
 val EnablePaxsenixMusixmatchLyricsKey = booleanPreferencesKey("enablePaxsenixMusixmatchLyrics")
 val EnableUnisonLyricsKey = booleanPreferencesKey("enableUnisonLyrics")
+val EnableMusixmatchLyricsKey = booleanPreferencesKey("enableMusixmatchLyrics")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
 val HideVideoKey = booleanPreferencesKey("hideVideo")
 val AiContentFilterEnabledKey = booleanPreferencesKey("aiContentFilterEnabled")
@@ -233,6 +235,7 @@ val LocalSongsIncludedFoldersKey = stringSetPreferencesKey("local_songs_included
 val LocalSongsExcludedFoldersKey = stringSetPreferencesKey("local_songs_excluded_folders")
 val LocalSongsSortTypeKey = stringPreferencesKey("local_songs_sort_type")
 val LocalSongsSortDescendingKey = booleanPreferencesKey("local_songs_sort_descending")
+val LocalSongsAutoScanKey = booleanPreferencesKey("local_songs_auto_scan")
 
 val TogetherDisplayNameKey = stringPreferencesKey("together_display_name")
 val TogetherClientIdKey = stringPreferencesKey("together_client_id")
@@ -316,9 +319,21 @@ val PermanentShuffleKey = booleanPreferencesKey("permanentShuffle")
 val SkipSilenceKey = booleanPreferencesKey("skipSilence")
 val AudioNormalizationKey = booleanPreferencesKey("audioNormalization")
 val AudioOffload = booleanPreferencesKey("audioOffload")
+val UsbBitPerfectKey = booleanPreferencesKey("usbBitPerfect")
+val UsbBitPerfectDriverKey = stringPreferencesKey("usbBitPerfectDriver")
+val UsbBitPerfectFixedVolumeKey = booleanPreferencesKey("usbBitPerfectFixedVolume")
+val UsbDacVolumeKey = intPreferencesKey("usbDacVolume")
+const val DEFAULT_USB_DAC_VOLUME_PERCENT = 25
+
+enum class UsbBitPerfectDriver {
+    ANDROID,
+    DIRECT,
+}
 val CrossfadeEnabledKey = booleanPreferencesKey("crossfadeEnabled")
 val CrossfadeDurationKey = floatPreferencesKey("crossfadeDuration")
 val CrossfadeGaplessKey = booleanPreferencesKey("crossfadeGapless")
+val SleepTimerFinishSongKey = booleanPreferencesKey("sleepTimerFinishSong")
+val SleepTimerFadeOutKey = booleanPreferencesKey("sleepTimerFadeOut")
 val AutoLoadMoreKey = booleanPreferencesKey("autoLoadMore")
 val AutoDownloadOnLikeKey = booleanPreferencesKey("autoDownloadOnLike")
 val AutoSkipNextOnErrorKey = booleanPreferencesKey("autoSkipNextOnError")
@@ -327,6 +342,11 @@ val DeviceMutePlaybackRecoveryVolumeKey = intPreferencesKey("deviceMutePlaybackR
 val AutoStartOnBluetoothKey = booleanPreferencesKey("autoStartOnBluetooth")
 val AutoPlayOnStartKey = booleanPreferencesKey("autoPlayOnStart")
 val StopMusicOnTaskClearKey = booleanPreferencesKey("stopMusicOnTaskClear")
+val MediaNotificationActionsKey = stringPreferencesKey("mediaNotificationActions")
+val MediaNotificationNavigationKey = stringPreferencesKey("mediaNotificationNavigation")
+val MediaNotificationSeekIncrementKey = intPreferencesKey("mediaNotificationSeekIncrement")
+val MediaNotificationSleepTimerMinutesKey = intPreferencesKey("mediaNotificationSleepTimerMinutes")
+val MediaNotificationStopOnDismissKey = booleanPreferencesKey("mediaNotificationStopOnDismiss")
 val WakelockKey = booleanPreferencesKey("wakelock")
 val ArtistSeparatorsKey = stringPreferencesKey("artistSeparators")
 val ExternalDownloaderEnabledKey = booleanPreferencesKey("externalDownloaderEnabled")
@@ -606,6 +626,7 @@ enum class PreferredLyricsProvider {
     BETTER_LYRICS_PORTATO,
     YOULY_PLUS,
     BINIMUM,
+    LRC_RED,
     LRCLIB,
     KUGOU,
     MEGALOBIZ,
@@ -614,6 +635,7 @@ enum class PreferredLyricsProvider {
     PAXSENIX_APPLE_MUSIC,
     PAXSENIX_SPOTIFY,
     PAXSENIX_MUSIXMATCH,
+    MUSIXMATCH,
 }
 
 val DefaultLyricsProviderOrder =
@@ -622,6 +644,7 @@ val DefaultLyricsProviderOrder =
         PreferredLyricsProvider.BETTER_LYRICS_PORTATO,
         PreferredLyricsProvider.YOULY_PLUS,
         PreferredLyricsProvider.BINIMUM,
+        PreferredLyricsProvider.LRC_RED,
         PreferredLyricsProvider.LRCLIB,
         PreferredLyricsProvider.KUGOU,
         PreferredLyricsProvider.MEGALOBIZ,
@@ -630,6 +653,7 @@ val DefaultLyricsProviderOrder =
         PreferredLyricsProvider.PAXSENIX_APPLE_MUSIC,
         PreferredLyricsProvider.PAXSENIX_SPOTIFY,
         PreferredLyricsProvider.PAXSENIX_MUSIXMATCH,
+        PreferredLyricsProvider.MUSIXMATCH,
     )
 
 fun deserializeLyricsProviderOrder(orderStr: String?): List<PreferredLyricsProvider> {
@@ -675,6 +699,7 @@ enum class PlayerDesignStyle {
     V8,
     V9,
     V10,
+    V11,
 }
 
 enum class PlayerBackgroundStyle {
@@ -744,7 +769,7 @@ enum class LyricsAnimationStyle {
 val LyricsTextSizeKey = floatPreferencesKey("lyricsTextSize")
 val LyricsLineSpacingKey = floatPreferencesKey("lyricsLineSpacing")
 val LyricsLineBlurKey = booleanPreferencesKey("lyricsLineBlur")
-val ShowLyricsPlayerControlsKey = booleanPreferencesKey("showLyricsPlayerControls")
+val LyricsAutoHideControlsKey = booleanPreferencesKey("lyricsAutoHideControls")
 
 val TopSize = stringPreferencesKey("topSize")
 
@@ -775,6 +800,18 @@ enum class LyricsMode {
     V2,
     ENHANCED,
 }
+
+val LyricsSyncOffsetModeKey = stringPreferencesKey("lyricsSyncOffsetMode")
+val LyricsGlobalSyncOffsetKey = intPreferencesKey("lyricsGlobalSyncOffset")
+
+const val LyricsSyncOffsetLimitMs = 5000
+
+enum class LyricsSyncOffsetMode {
+    GLOBAL,
+    PER_SONG,
+}
+
+val DefaultLyricsSyncOffsetMode = LyricsSyncOffsetMode.PER_SONG
 
 val LyricsV2BounceFactorKey = floatPreferencesKey("lyricsV2BounceFactor")
 val LyricsV2GlowFactorKey = floatPreferencesKey("lyricsV2GlowFactor")
@@ -924,6 +961,8 @@ val LastUpdateCheckKey = longPreferencesKey("lastUpdateCheck")
 val LastNotifiedVersionKey = stringPreferencesKey("lastNotifiedVersion")
 val UpdateRepositoryOwnerKey = stringPreferencesKey("updateRepositoryOwner")
 val UpdateRepositoryNameKey = stringPreferencesKey("updateRepositoryName")
+val WhatsNewVersionKey = stringPreferencesKey("whats_new_version")
+val WhatsNewPendingKey = booleanPreferencesKey("whats_new_pending")
 
 val GitHubContributorsEtagKey = stringPreferencesKey("github_contributors_etag")
 val GitHubContributorsJsonKey = stringPreferencesKey("github_contributors_json")
