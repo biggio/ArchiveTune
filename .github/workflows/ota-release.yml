@@ -99,6 +99,11 @@ jobs:
 
       - name: Prepare and Sign APKs
         shell: bash
+        env:
+          KEYSTORE: ${{ secrets.KEYSTORE }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           mkdir -p dist
           
@@ -118,6 +123,18 @@ jobs:
             if "$APKSIGNER" verify "$RELEASE_APK" >/dev/null 2>&1; then
               echo "Release APK is already signed."
               cp "$RELEASE_APK" dist/app-gms-mobile-universal-release.apk
+            elif [ -n "${KEYSTORE:-}" ] && [ -n "${KEY_ALIAS:-}" ]; then
+              echo "Signing release APK with repository secret KEYSTORE..."
+              KEYSTORE_FILE="$(mktemp)"
+              echo "$KEYSTORE" | base64 -d > "$KEYSTORE_FILE"
+              "$APKSIGNER" sign \
+                --ks "$KEYSTORE_FILE" \
+                --ks-key-alias "$KEY_ALIAS" \
+                --ks-pass "pass:${KEYSTORE_PASSWORD:-}" \
+                --key-pass "pass:${KEY_PASSWORD:-${KEYSTORE_PASSWORD:-}}" \
+                --out dist/app-gms-mobile-universal-release.apk \
+                "$RELEASE_APK"
+              rm -f "$KEYSTORE_FILE"
             else
               echo "Signing release APK with debug keystore..."
               "$APKSIGNER" sign \

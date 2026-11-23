@@ -50,8 +50,14 @@ val releaseKeystoreFile = file("keystore/release.keystore")
 val releaseStorePassword =
     System.getenv("STORE_PASSWORD")?.takeIf { it.isNotBlank() }
         ?: System.getenv("KEYSTORE_PASSWORD")?.takeIf { it.isNotBlank() }
-val releaseKeyAlias = System.getenv("KEY_ALIAS")?.takeIf { it.isNotBlank() }
-val releaseKeyPassword = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+        ?: localProperties.getProperty("STORE_PASSWORD")?.takeIf { it.isNotBlank() }
+        ?: localProperties.getProperty("KEYSTORE_PASSWORD")?.takeIf { it.isNotBlank() }
+val releaseKeyAlias =
+    System.getenv("KEY_ALIAS")?.takeIf { it.isNotBlank() }
+        ?: localProperties.getProperty("KEY_ALIAS")?.takeIf { it.isNotBlank() }
+val releaseKeyPassword =
+    System.getenv("KEY_PASSWORD")?.takeIf { it.isNotBlank() }
+        ?: localProperties.getProperty("KEY_PASSWORD")?.takeIf { it.isNotBlank() }
 val hasReleaseSigningConfig =
     releaseKeystoreFile.isFile &&
         releaseStorePassword != null &&
@@ -67,8 +73,8 @@ android {
     applicationId = "moe.rukamori.archivetune"
         minSdk = 26
         targetSdk = 37
-        versionCode = 14301
-        versionName = "16.0.0-r1"
+        versionCode = 14302
+        versionName = "16.0.0-r2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
