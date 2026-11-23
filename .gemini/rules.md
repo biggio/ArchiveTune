@@ -10,9 +10,9 @@
 - **個人倉庫 (origin)**：`git@github.com:biggio/ArchiveTune.git`（主分支：`main`）
 - **官方上游 (upstream)**：`https://github.com/rukamori/ArchiveTune.git`
 - **版本規範**：
-  - 採用 **`<upstream-version>-r<N>`** 獨立修訂版號架構（當前版本：`15.1.0-r1`，對應上游 `15.1.0`）。
-  - **核心精神**：保留 upstream 主版本號（如 `15.1.0`），後綴個人修訂號（`-r1`, `-r2`），避免上游更新時產生版本合併衝突。
-  - `versionCode` 採用 `(upstream_versionCode * 100) + revision`（例如上游 142 -> 本專案 `14201`），確保 Android 系統安裝升級時 versionCode 永遠單調遞增（14201 > 14101）。
+  - 採用 **`<upstream-version>-r<N>`** 獨立修訂版號架構（當前版本：`16.0.0-r1`，對應上游 `16.0.0`）。
+  - **核心精神**：保留 upstream 主版本號（如 `16.0.0`），後綴個人修訂號（`-r1`, `-r2`），避免上游更新時產生版本合併衝突。
+  - `versionCode` 採用 `(upstream_versionCode * 100) + revision`（例如上游 143 -> 本專案 `14301`），確保 Android 系統安裝升級時 versionCode 永遠單調遞增（14301 > 14201）。
 
 ---
 
@@ -126,22 +126,22 @@ export PATH="$JAVA_HOME/bin:$PATH"
 ./gradlew spotlessApply
 ```
 
-### 如何發布新的 OTA 更新 (例如發布 15.1.0-r1)
+### 如何發布新的 OTA 更新 (例如發布 16.0.0-r1)
 1. 修改 `app/build.gradle.kts`：
    ```kotlin
-   versionCode = 14201
-   versionName = "15.1.0-r1"
+   versionCode = 14301
+   versionName = "16.0.0-r1"
    ```
 2. 提交代碼並推送：
    ```bash
    git add app/build.gradle.kts
-   git commit -m "bump: 15.1.0-r1"
+   git commit -m "bump: 16.0.0-r1"
    git push origin main
    ```
 3. 打上 Tag 並推送：
    ```bash
-   git tag v15.1.0-r1
-   git push origin v15.1.0-r1
+   git tag v16.0.0-r1
+   git push origin v16.0.0-r1
    ```
 4. GitHub Actions 的 `ota-release.yml` 會自動編譯 Universal APK 並發布至 GitHub Releases，使用者手機將於「設定 > 檢查更新」自動收到更新提示！
 
